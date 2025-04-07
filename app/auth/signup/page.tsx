@@ -3,22 +3,27 @@
 
 import { useState } from 'react';
 import {
-  Box, Button, FormControl, FormLabel, Input, Heading, VStack, Text, Link, InputRightElement, InputGroup, IconButton, Progress,
+  Box, Button, FormControl, FormLabel, Input, Heading, Text, Link, InputGroup, InputRightElement, IconButton, Progress,
 } from '@chakra-ui/react';
 import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons';
 import { supabase } from '../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { motion } from 'framer-motion';
+
+const MotionBox = motion(Box);
+const MotionButton = motion(Button);
 
 const passwordSchema = z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/, 'Password must have 1 upper, 1 lower, 1 number, 1 special character');
+
+const commonPasswords = ['password123', 'admin123', 'welcome1']; // Basic list—expand later
 
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -31,10 +36,12 @@ export default function Signup() {
     if (!z.string().email().safeParse(email).success) newErrors.email = 'Invalid email format';
     try {
       passwordSchema.parse(password);
+      if (commonPasswords.some((p) => password.toLowerCase().includes(p))) {
+        newErrors.password = 'Password is too common—choose something unique';
+      }
     } catch (e) {
       newErrors.password = (e as z.ZodError).errors[0].message;
     }
-    if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords must match';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -51,6 +58,7 @@ export default function Signup() {
   const handleSignup = async () => {
     if (!validateForm()) return;
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -67,55 +75,75 @@ export default function Signup() {
 
   const handleMagicLink = async () => {
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.signInWithOtp({ email });
     setLoading(false);
     if (error) toast.error(error.message);
     else toast.success('Magic link sent—check your email!');
   };
 
-  const handleGoogleSignup = async () => {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: 'http://localhost:3000/dashboard' },
-    });
-    setLoading(false);
-    if (error) toast.error(error.message);
-  };
-
   return (
-    <Box
-      minH="100vh"
-      bgImage="url('/singuplog.jpeg')"
-      bgSize="cover"
-      bgPosition="center"
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      p={4}
-    >
-      <VStack
-        spacing={4}
+    <MotionBox
+    minH="100vh"
+    bgImage="url('/singuplog.jpeg')"
+    bgSize="cover"
+    bgPosition="center"
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    p={4}
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.5 }}
+  >
+      <MotionBox
         p={6}
         bg="brand.neutral"
         borderRadius="md"
         boxShadow="lg"
         w={{ base: '90%', sm: '400px' }}
+        display="flex"
+        flexDirection="column"
+        gap={4}
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
       >
-        <Heading color="brand.primary" fontSize={{ base: 'xl', md: '2xl' }}>Sign Up</Heading>
+        <Heading color="brand.primary" fontSize={{ base: 'xl', md: '2xl' }}>
+          Sign Up
+        </Heading>
         <FormControl isInvalid={!!errors.firstName}>
           <FormLabel color="brand.primary">First Name</FormLabel>
-          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} bg="brand.light" borderColor="brand.primary" />
+          <Input
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            bg="brand.light"
+            borderColor="brand.primary"
+            _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+          />
           {errors.firstName && <Text color="red.500" fontSize="sm">{errors.firstName}</Text>}
         </FormControl>
         <FormControl isInvalid={!!errors.lastName}>
           <FormLabel color="brand.primary">Last Name</FormLabel>
-          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} bg="brand.light" borderColor="brand.primary" />
+          <Input
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            bg="brand.light"
+            borderColor="brand.primary"
+            _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+          />
           {errors.lastName && <Text color="red.500" fontSize="sm">{errors.lastName}</Text>}
         </FormControl>
         <FormControl isInvalid={!!errors.email}>
           <FormLabel color="brand.primary">Email</FormLabel>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} bg="brand.light" borderColor="brand.primary" />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            bg="brand.light"
+            borderColor="brand.primary"
+            _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+          />
           {errors.email && <Text color="red.500" fontSize="sm">{errors.email}</Text>}
         </FormControl>
         <FormControl isInvalid={!!errors.password}>
@@ -127,6 +155,7 @@ export default function Signup() {
               onChange={(e) => setPassword(e.target.value)}
               bg="brand.light"
               borderColor="brand.primary"
+              _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
             />
             <InputRightElement>
               <IconButton
@@ -140,53 +169,40 @@ export default function Signup() {
           <Progress value={passwordStrength()} mt={2} colorScheme={passwordStrength() > 75 ? 'green' : 'yellow'} />
           {errors.password && <Text color="red.500" fontSize="sm">{errors.password}</Text>}
         </FormControl>
-        <FormControl isInvalid={!!errors.confirmPassword}>
-          <FormLabel color="brand.primary">Confirm Password</FormLabel>
-          <Input
-            type={showPassword ? 'text' : 'password'}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            bg="brand.light"
-            borderColor="brand.primary"
-          />
-          {errors.confirmPassword && <Text color="red.500" fontSize="sm">{errors.confirmPassword}</Text>}
-        </FormControl>
-        <Button
+        <MotionButton
           bg="brand.accent"
           color="white"
           _hover={{ bg: '#a0a900' }}
           onClick={handleSignup}
           w="full"
           isLoading={loading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ duration: 0.2 }}
         >
           Sign Up
-        </Button>
-        <Button
+        </MotionButton>
+        <MotionButton
           variant="outline"
           borderColor="brand.primary"
           color="brand.primary"
           onClick={handleMagicLink}
           w="full"
           isLoading={loading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ duration: 0.2 }}
         >
           Send Magic Link
-        </Button>
-        <Button
-          bg="white"
-          color="brand.primary"
-          border="1px"
-          borderColor="brand.primary"
-          onClick={handleGoogleSignup}
-          w="full"
-          isLoading={loading}
-          leftIcon={<img src="/google-icon.png" alt="Google" width="20" />}
-        >
-          Sign up with Google
-        </Button>
+        </MotionButton>
         <Text fontSize="sm">
           Already have an account? <Link href="/auth/login" color="brand.accent">Log In</Link>
         </Text>
-      </VStack>
-    </Box>
+        <Text fontSize="xs" color="gray.500">
+          By clicking the submit button you agree to the{' '}
+          <Link href="/terms" color="brand.accent">Terms and Conditions</Link>.
+        </Text>
+      </MotionBox>
+    </MotionBox>
   );
 }

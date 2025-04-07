@@ -3,12 +3,16 @@
 
 import { useState } from 'react';
 import {
-  Box, Button, FormControl, FormLabel, Input, Heading, VStack, Text, Link, InputGroup, InputRightElement, IconButton,
+  Box, Button, FormControl, FormLabel, Input, Heading, Text, Link, InputGroup, InputRightElement, IconButton,
 } from '@chakra-ui/react';
 import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons';
 import { supabase } from '../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+
+const MotionBox = motion(Box);
+const MotionButton = motion(Button);
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,6 +33,7 @@ export default function Login() {
   const handleLogin = async () => {
     if (!validateForm()) return;
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay to slow brute force
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
@@ -41,24 +46,15 @@ export default function Login() {
 
   const handleMagicLink = async () => {
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.signInWithOtp({ email });
     setLoading(false);
     if (error) toast.error(error.message);
     else toast.success('Magic link sent—check your email!');
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: 'http://localhost:3000/dashboard' },
-    });
-    setLoading(false);
-    if (error) toast.error(error.message);
-  };
-
   return (
-    <Box
+    <MotionBox
       minH="100vh"
       bgImage="url('/singuplog.jpeg')"
       bgSize="cover"
@@ -67,16 +63,26 @@ export default function Login() {
       alignItems="center"
       justifyContent="center"
       p={4}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
     >
-      <VStack
-        spacing={4}
+      <MotionBox
         p={6}
         bg="brand.neutral"
         borderRadius="md"
         boxShadow="lg"
         w={{ base: '90%', sm: '400px' }}
+        display="flex"
+        flexDirection="column"
+        gap={4}
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
       >
-        <Heading color="brand.primary" fontSize={{ base: 'xl', md: '2xl' }}>Login</Heading>
+        <Heading color="brand.primary" fontSize={{ base: 'xl', md: '2xl' }}>
+          Login
+        </Heading>
         <FormControl isInvalid={!!errors.email}>
           <FormLabel color="brand.primary">Email</FormLabel>
           <Input
@@ -85,6 +91,7 @@ export default function Login() {
             onChange={(e) => setEmail(e.target.value)}
             bg="brand.light"
             borderColor="brand.primary"
+            _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
           />
           {errors.email && <Text color="red.500" fontSize="sm">{errors.email}</Text>}
         </FormControl>
@@ -97,6 +104,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               bg="brand.light"
               borderColor="brand.primary"
+              _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
             />
             <InputRightElement>
               <IconButton
@@ -109,42 +117,40 @@ export default function Login() {
           </InputGroup>
           {errors.password && <Text color="red.500" fontSize="sm">{errors.password}</Text>}
         </FormControl>
-        <Button
+        <MotionButton
           bg="brand.accent"
           color="white"
           _hover={{ bg: '#a0a900' }}
           onClick={handleLogin}
           w="full"
           isLoading={loading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ duration: 0.2 }}
         >
           Log In
-        </Button>
-        <Button
+        </MotionButton>
+        <MotionButton
           variant="outline"
           borderColor="brand.primary"
           color="brand.primary"
           onClick={handleMagicLink}
           w="full"
           isLoading={loading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ duration: 0.2 }}
         >
           Send Magic Link
-        </Button>
-        <Button
-          bg="white"
-          color="brand.primary"
-          border="1px"
-          borderColor="brand.primary"
-          onClick={handleGoogleLogin}
-          w="full"
-          isLoading={loading}
-          leftIcon={<img src="/google-icon.png" alt="Google" width="20" />}
-        >
-          Sign in with Google
-        </Button>
+        </MotionButton>
         <Text fontSize="sm">
           Don’t have an account? <Link href="/auth/signup" color="brand.accent">Sign Up</Link>
         </Text>
-      </VStack>
-    </Box>
+        <Text fontSize="xs" color="gray.500">
+          By clicking the submit button you agree to the{' '}
+          <Link href="/terms" color="brand.accent">Terms and Conditions</Link>.
+        </Text>
+      </MotionBox>
+    </MotionBox>
   );
 }
