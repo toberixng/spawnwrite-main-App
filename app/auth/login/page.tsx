@@ -53,10 +53,25 @@ export default function Login() {
     else toast.success('Magic link sent—check your email!');
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error('Please enter your email first');
+      return;
+    }
+    setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'http://localhost:3000/auth/reset-password', // Adjust for production URL
+    });
+    setLoading(false);
+    if (error) toast.error(error.message);
+    else toast.success('Password reset email sent—check your inbox!');
+  };
+
   return (
     <MotionBox
       minH="100vh"
-      bgImage="url('/singuplog.jpeg')"
+      bgImage="url('/singuplog.webp')"
       bgSize="cover"
       bgPosition="center"
       display="flex"
@@ -117,6 +132,11 @@ export default function Login() {
           </InputGroup>
           {errors.password && <Text color="red.500" fontSize="sm">{errors.password}</Text>}
         </FormControl>
+        <Text fontSize="sm" textAlign="right">
+          <Link color="brand.accent" onClick={handleForgotPassword}>
+            Forgot Password?
+          </Link>
+        </Text>
         <MotionButton
           bg="brand.accent"
           color="white"

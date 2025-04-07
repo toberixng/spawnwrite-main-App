@@ -17,7 +17,7 @@ const MotionButton = motion(Button);
 
 const passwordSchema = z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/, 'Password must have 1 upper, 1 lower, 1 number, 1 special character');
 
-const commonPasswords = ['password123', 'admin123', 'welcome1']; // Basic list—expand later
+const commonPasswords = ['password123', 'admin123', 'welcome1'];
 
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
@@ -29,11 +29,24 @@ export default function Signup() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const router = useRouter();
 
-  const validateForm = () => {
+  const validateForm = async () => {
     const newErrors: { [key: string]: string } = {};
     if (!firstName) newErrors.firstName = 'First name is required';
     if (!lastName) newErrors.lastName = 'Last name is required';
     if (!z.string().email().safeParse(email).success) newErrors.email = 'Invalid email format';
+
+    // Check if email is already registered
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('email')
+      .eq('email', email)
+      .single();
+    if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "no rows" error
+      newErrors.email = 'Error checking email availability';
+    } else if (existingUser) {
+      newErrors.email = 'This email is already registered';
+    }
+
     try {
       passwordSchema.parse(password);
       if (commonPasswords.some((p) => password.toLowerCase().includes(p))) {
@@ -56,7 +69,7 @@ export default function Signup() {
   };
 
   const handleSignup = async () => {
-    if (!validateForm()) return;
+    if (!(await validateForm())) return;
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.signUp({
@@ -84,18 +97,18 @@ export default function Signup() {
 
   return (
     <MotionBox
-    minH="100vh"
-    bgImage="url('/singuplog.jpeg')"
-    bgSize="cover"
-    bgPosition="center"
-    display="flex"
-    alignItems="center"
-    justifyContent="center"
-    p={4}
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ duration: 0.5 }}
-  >
+      minH="100vh"
+      bgImage="url('/singuplog.webp')"
+      bgSize="cover"
+      bgPosition="center"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      p={4}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       <MotionBox
         p={6}
         bg="brand.neutral"
