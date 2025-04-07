@@ -1,0 +1,273 @@
+// app/dashboard/editor/page.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Box, Heading, Input, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
+import { motion } from 'framer-motion';
+import { supabase } from '../../../lib/supabase';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
+import NextLink from 'next/link';
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
+import { $getRoot, EditorState } from 'lexical';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+const MotionBox = motion(Box);
+const MotionButton = motion(Button);
+
+// Define the ErrorBoundary adapter function
+function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <CustomErrorBoundary onError={(error) => console.error(error)}>
+      {children as React.ReactElement}
+    </CustomErrorBoundary>
+  );
+}
+
+// Define props interface for CustomErrorBoundary
+interface ErrorBoundaryProps {
+  children: React.ReactElement;
+  onError?: (error: Error) => void;
+}
+
+// Custom Error Boundary Component
+class CustomErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Lexical Error:', error, errorInfo);
+    if (this.props.onError) {
+      this.props.onError(error);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <Box color="red.500">Something went wrong in the editor.</Box>;
+    }
+    return this.props.children;
+  }
+}
+
+const lexicalConfig = {
+  namespace: 'SpawnWriteEditor',
+  onError: (error: Error) => console.error(error),
+  theme: {
+    paragraph: 'editor-paragraph',
+    text: {
+      bold: 'editor-bold',
+      italic: 'editor-italic',
+    },
+  },
+};
+
+export default function Editor() {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState<string>('');
+  const [published, setPublished] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const postId = searchParams.get('id');
+
+  useEffect(() => {
+    if (postId) {
+      const fetchPost = async () => {
+        setFetching(true);
+        const { data, error } = await supabase
+          .from('posts')
+          .select('title, content, published')
+          .eq('id', postId)
+          .single();
+
+        if (error) {
+          toast.error('Error loading post');
+        } else {
+          setTitle(data.title);
+          setContent(data.content || '');
+          setPublished(data.published);
+        }
+        setFetching(false);
+      };
+      fetchPost();
+    }
+  }, [postId]);
+
+  const handleContentChange = (editorState: EditorState) => {
+    editorState.read(() => {
+      const root = $getRoot();
+      setContent(root.getTextContent());
+    });
+  };
+
+  const handleSave = async () => {
+    if (!title.trim() || !content.trim()) {
+      toast.error('Title and content cannot be empty');
+      return;
+    }
+
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/auth/login');
+      return;
+    }
+
+    if (postId) {
+      const { error } = await supabase
+        .from('posts')
+        .update({ title, content, published, updated_at: new Date().toISOString() })
+        .eq('id', postId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Post updated!');
+        router.push('/dashboard');
+      }
+    } else {
+      const { error } = await supabase
+        .from('posts')
+        .insert({ title, content, user_id: user.id, published });
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Post saved!');
+        router.push('/dashboard');
+      }
+    }
+    setLoading(false);
+  };
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Logged out successfully!');
+      router.push('/auth/login');
+    }
+  };
+
+  if (fetching && postId) {
+    return (
+      <Box minH="100vh" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
+        <Spinner size="xl" color="brand.accent" />
+      </Box>
+    );
+  }
+
+  return (
+    <MotionBox
+      minH="100vh"
+      bg="gray.100"
+      color="brand.primary"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <MotionBox
+        as="nav"
+        bg="brand.primary"
+        color="white"
+        p={4}
+        position="sticky"
+        top={0}
+        zIndex={10}
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <HStack justify="space-between" maxW="800px" mx="auto">
+          <Heading size="md">SpawnWrite</Heading>
+          <HStack spacing={4}>
+            <NextLink href="/dashboard" passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+                Dashboard
+              </MotionButton>
+            </NextLink>
+            <NextLink href="/dashboard/editor" passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+                Editor
+              </MotionButton>
+            </NextLink>
+            <MotionButton bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
+              Logout
+            </MotionButton>
+          </HStack>
+        </HStack>
+      </MotionBox>
+
+      <VStack spacing={6} maxW="800px" mx="auto" py={10}>
+        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
+          {postId ? 'Edit Post' : 'New Post'}
+        </Heading>
+        <Input
+          placeholder="Post Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          bg="white"
+          borderColor="gray.300"
+          _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #b8c103' }}
+          color="brand.primary"
+          fontSize="lg"
+          p={6}
+          borderRadius="lg"
+          boxShadow="sm"
+        />
+        <Box w="full" bg="white" borderRadius="lg" p={4} boxShadow="sm" minH="400px">
+          <LexicalComposer initialConfig={lexicalConfig}>
+            <RichTextPlugin
+              contentEditable={<ContentEditable style={{ minHeight: '350px', padding: '8px', outline: 'none' }} />}
+              placeholder={<Box color="gray.500" p={2}>Write your post here...</Box>}
+              ErrorBoundary={LexicalErrorBoundary}
+            />
+            <HistoryPlugin />
+            <OnChangePlugin onChange={handleContentChange} />
+          </LexicalComposer>
+        </Box>
+        <HStack w="full" justify="space-between">
+          <FormControl display="flex" alignItems="center" w="auto">
+            <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold">
+              Publish
+            </FormLabel>
+            <Switch
+              id="publish-toggle"
+              isChecked={published}
+              onChange={(e) => setPublished(e.target.checked)}
+              colorScheme="yellow"
+            />
+          </FormControl>
+          <MotionButton
+            bg="brand.primary"
+            color="white"
+            _hover={{ bg: 'brand.accent' }}
+            onClick={handleSave}
+            isLoading={loading}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            px={6}
+            py={3}
+            borderRadius="lg"
+            boxShadow="md"
+            fontWeight="bold"
+          >
+            Save Post
+          </MotionButton>
+        </HStack>
+      </VStack>
+    </MotionBox>
+  );
+}

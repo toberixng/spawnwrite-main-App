@@ -40,3 +40,17 @@ a {
     color-scheme: dark;
   }
 }
+
+.editor-paragraph {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.editor-bold {
+  font-weight: bold;
+}
+
+.editor-italic {
+  font-style: italic;
+}
