@@ -125,6 +125,7 @@ export default function EditorPage() {
     } else {
       toast.success('Logged out successfully!');
       router.push('/auth/login');
+      router.refresh(); // Ensure session clears
     }
   };
 
@@ -148,7 +149,7 @@ export default function EditorPage() {
       <MotionBox
         as="nav"
         bg="brand.primary"
-        color="white"
+        color="white" // Set navbar text color to white
         p={4}
         position="sticky"
         top={0}
@@ -161,16 +162,16 @@ export default function EditorPage() {
           <Heading size="md">SpawnWrite</Heading>
           <HStack spacing={4}>
             <NextLink href="/dashboard" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Dashboard
               </MotionButton>
             </NextLink>
             <NextLink href="/dashboard/editor" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Editor
               </MotionButton>
             </NextLink>
-            <MotionButton bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
+            <MotionButton bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
               Logout
             </MotionButton>
           </HStack>

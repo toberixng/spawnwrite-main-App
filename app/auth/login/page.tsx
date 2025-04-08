@@ -1,7 +1,7 @@
 // app/auth/login/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Button, FormControl, FormLabel, Input, Heading, Text, Link, InputGroup, InputRightElement, IconButton,
 } from '@chakra-ui/react';
@@ -23,6 +23,16 @@ export default function Login() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const router = useRouter();
 
+  useEffect(() => {
+    // Check if a user is already logged in and redirect
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        router.push('/dashboard');
+        router.refresh();
+      }
+    });
+  }, [router]);
+
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
     if (!email) newErrors.email = 'Email is required';
@@ -34,21 +44,19 @@ export default function Login() {
   const handleLogin = async () => {
     if (!validateForm()) return;
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error(error.message);
     } else {
-      const handle = data.user?.user_metadata.handle || 'user'; // Default to 'user' if no handle
       toast.success('Logged in successfully!');
-      router.push(`/${handle}`); // Redirect to /[handle]
+      router.push('/dashboard');
+      router.refresh(); // Force refresh to sync session
     }
   };
 
   const handleMagicLink = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { error } = await supabase.auth.signInWithOtp({ email });
     setLoading(false);
     if (error) toast.error(error.message);
@@ -61,7 +69,6 @@ export default function Login() {
       return;
     }
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: 'http://localhost:3000/auth/reset-password',
     });

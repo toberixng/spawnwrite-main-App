@@ -20,8 +20,7 @@ export default function OAuthButton({ provider, isLoading, setLoading }: OAuthBu
 
   const handleOAuthLogin = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: 'http://localhost:3000/dashboard', // Adjust for production later
@@ -31,14 +30,9 @@ export default function OAuthButton({ provider, isLoading, setLoading }: OAuthBu
     if (error) {
       toast.error(error.message || `Failed to sign in with ${provider}`);
     } else {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        toast.error('Failed to fetch user data after login');
-      } else {
-        const handle = userData.user.user_metadata.handle || 'user'; // Default to 'user'
-        toast.success(`Signed in with ${provider} successfully!`);
-        router.push(`/${handle}`); // Redirect to /[handle]
-      }
+      toast.success(`Signed in with ${provider} successfully!`);
+      router.push('/dashboard');
+      router.refresh(); // Force refresh to sync session
     }
   };
 

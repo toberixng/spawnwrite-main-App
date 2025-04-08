@@ -20,7 +20,6 @@ const commonPasswords = ['password123', 'admin123', 'welcome1'];
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [handle, setHandle] = useState(''); // New handle state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,8 +32,6 @@ export default function Signup() {
     const newErrors: { [key: string]: string } = {};
     if (!firstName) newErrors.firstName = 'First name is required';
     if (!lastName) newErrors.lastName = 'Last name is required';
-    if (!handle) newErrors.handle = 'Handle is required'; // Validate handle
-    else if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) newErrors.handle = 'Handle must be 3-20 characters, letters, numbers, or underscores only';
     if (!z.string().email().safeParse(email).success) newErrors.email = 'Invalid email format';
     try {
       passwordSchema.parse(password);
@@ -57,18 +54,24 @@ export default function Signup() {
     return strength;
   };
 
+  const generateDefaultHandle = () => {
+    const randomString = Math.random().toString(36).substring(2, 8);
+    return `user_${randomString}`;
+  };
+
   const handleSignup = async () => {
     if (!validateForm()) return;
-    
+
     setLoading(true);
     setUserExists(false);
-    
+    const defaultHandle = generateDefaultHandle();
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { 
-          data: { first_name: firstName, last_name: lastName, handle }, // Store handle in metadata
+          data: { first_name: firstName, last_name: lastName, handle: defaultHandle },
           emailRedirectTo: 'http://localhost:3000/dashboard',
         },
       });
@@ -92,7 +95,8 @@ export default function Signup() {
           toast.error('This email is already registered. Please log in instead.');
         } else {
           toast.success('Check your email to confirm your account!');
-          router.push(`/${handle}`); // Redirect to /[handle]
+          router.push('/dashboard');
+          router.refresh(); // Force refresh to sync session
         }
       } else {
         toast.error('Unexpected response from server. Please try again.');
@@ -216,19 +220,6 @@ export default function Signup() {
                 isDisabled={userExists || loading}
               />
               {errors.lastName && <Text color="red.500" fontSize="sm">{errors.lastName}</Text>}
-            </FormControl>
-            <FormControl isInvalid={!!errors.handle}>
-              <FormLabel color="brand.primary">Handle</FormLabel>
-              <Input
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                bg="brand.light"
-                borderColor="brand.primary"
-                _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
-                isDisabled={userExists || loading}
-                placeholder="e.g., johndoe123"
-              />
-              {errors.handle && <Text color="red.500" fontSize="sm">{errors.handle}</Text>}
             </FormControl>
             <FormControl isInvalid={!!errors.email}>
               <FormLabel color="brand.primary">Email</FormLabel>
