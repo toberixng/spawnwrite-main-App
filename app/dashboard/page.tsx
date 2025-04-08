@@ -1,30 +1,25 @@
 // app/dashboard/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Box, Heading, Text, VStack, Flex, LinkBox, LinkOverlay, HStack, Spinner, IconButton,
-  AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent,
-  AlertDialogOverlay, Button as ChakraButton
+  Box, Heading, VStack, Button, HStack, Text, Spinner, Modal, ModalOverlay, ModalContent,
+  ModalHeader, ModalFooter, ModalBody, ModalCloseButton, useDisclosure,
 } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
-import NextLink from 'next/link';
 import { toast } from 'sonner';
-import { DeleteIcon } from '@chakra-ui/icons';
-import { useRef } from 'react';
-import { FocusableElement } from '@chakra-ui/utils';
+import NextLink from 'next/link';
 
 const MotionBox = motion(Box);
-const MotionButton = motion(Box);
+const MotionButton = motion(Button);
 
 export default function Dashboard() {
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<{ id: string; title: string; created_at: string; published: boolean; views: number }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const { isOpen, onOpen, onClose } = useDisclosure();
   const router = useRouter();
 
   useEffect(() => {
@@ -37,13 +32,12 @@ export default function Dashboard() {
 
       const { data, error } = await supabase
         .from('posts')
-        .select('id, title, created_at, published')
+        .select('id, title, created_at, published, views')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching posts:', error);
-        toast.error('Failed to load posts');
+        toast.error('Error loading posts');
       } else {
         setPosts(data || []);
       }
@@ -53,20 +47,23 @@ export default function Dashboard() {
     fetchPosts();
   }, [router]);
 
-  const handleDelete = async (postId: string) => {
+  const handleDelete = async () => {
+    if (!postToDelete) return;
+
+    setLoading(true);
     const { error } = await supabase
       .from('posts')
       .delete()
-      .eq('id', postId);
+      .eq('id', postToDelete);
 
     if (error) {
       toast.error(error.message);
     } else {
-      setPosts(posts.filter((post) => post.id !== postId));
-      toast.success('Post deleted!');
+      setPosts(posts.filter((post) => post.id !== postToDelete));
+      toast.success('Post deleted successfully!');
     }
-    setIsDeleteOpen(false);
-    setPostToDelete(null);
+    setLoading(false);
+    onClose();
   };
 
   const handleLogout = async () => {
@@ -81,7 +78,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <Box minH="100vh" bg="gray.100" color="brand.primary" display="flex" alignItems="center" justifyContent="center">
+      <Box minH="100vh" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
         <Spinner size="xl" color="brand.accent" />
       </Box>
     );
@@ -108,7 +105,7 @@ export default function Dashboard() {
         animate={{ y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <HStack justify="space-between" maxW="800px" mx="auto">
+        <HStack justify="space-between" maxW="1200px" mx="auto">
           <Heading size="md">SpawnWrite</Heading>
           <HStack spacing={4}>
             <NextLink href="/dashboard" passHref legacyBehavior>
@@ -128,103 +125,115 @@ export default function Dashboard() {
         </HStack>
       </MotionBox>
 
-      <VStack spacing={8} align="start" maxW="800px" mx="auto" py={10}>
-        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
-          Welcome to SpawnWrite
-        </Heading>
-        <NextLink href="/dashboard/editor" passHref legacyBehavior>
-          <MotionButton
-            as="a"
-            bg="brand.primary"
-            color="white"
-            _hover={{ bg: 'brand.accent' }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            px={6}
-            py={3}
-            borderRadius="lg"
-            boxShadow="md"
-            fontWeight="bold"
-          >
-            Create New Post
-          </MotionButton>
-        </NextLink>
+      <VStack spacing={6} maxW="1200px" mx="auto" py={10}>
+        <HStack w="full" justify="space-between">
+          <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
+            Your Posts
+          </Heading>
+          <NextLink href="/dashboard/editor" passHref legacyBehavior>
+            <MotionButton
+              as="a"
+              bg="brand.primary"
+              color="white"
+              _hover={{ bg: 'brand.accent' }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              px={6}
+              py={3}
+              borderRadius="lg"
+              boxShadow="md"
+              fontWeight="bold"
+            >
+              Create Post
+            </MotionButton>
+          </NextLink>
+        </HStack>
         {posts.length === 0 ? (
-          <Text fontSize="lg" color="gray.600">
-            No posts yet—get started by creating your first one!
+          <Text fontSize="lg" color="gray.500">
+            No posts yet. Start by creating one!
           </Text>
         ) : (
-          <VStack spacing={4} w="full">
+          <VStack w="full" spacing={4}>
             {posts.map((post) => (
-              <LinkBox
+              <MotionBox
                 key={post.id}
-                as={Flex}
                 bg="white"
-                color="brand.primary"
                 p={4}
                 borderRadius="lg"
-                w="full"
-                justify="space-between"
                 boxShadow="sm"
-                _hover={{ bg: 'gray.50', boxShadow: 'md', transform: 'translateY(-2px)' }}
-                transition="all 0.2s ease"
-                align="center"
+                w="full"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
               >
-                <LinkOverlay as={NextLink} href={`/dashboard/post/${post.id}`}>
-                  <Text fontWeight="bold" fontSize="lg">{post.title}</Text>
-                </LinkOverlay>
-                <HStack spacing={4}>
-                  <Text fontSize="sm" color="gray.500">
-                    {new Date(post.created_at).toLocaleDateString()} {post.published ? '(Published)' : '(Draft)'}
-                  </Text>
-                  <IconButton
-                    aria-label="Delete post"
-                    icon={<DeleteIcon />}
-                    size="sm"
-                    colorScheme="red"
-                    variant="ghost"
-                    onClick={() => {
-                      setPostToDelete(post.id);
-                      setIsDeleteOpen(true);
-                    }}
-                  />
+                <HStack justify="space-between">
+                  <VStack align="start" spacing={1}>
+                    <NextLink href={`/dashboard/post/${post.id}`} passHref legacyBehavior>
+                      <Text as="a" fontSize="lg" fontWeight="bold" color="brand.primary" _hover={{ color: 'brand.accent' }}>
+                        {post.title}
+                      </Text>
+                    </NextLink>
+                    <Text fontSize="sm" color="gray.500">
+                      {new Date(post.created_at).toLocaleDateString()} | {post.published ? 'Published' : 'Draft'} | Views: {post.views}
+                    </Text>
+                  </VStack>
+                  <HStack spacing={2}>
+                    <NextLink href={`/dashboard/editor?id=${post.id}`} passHref legacyBehavior>
+                      <MotionButton
+                        as="a"
+                        size="sm"
+                        variant="outline"
+                        borderColor="brand.primary"
+                        color="brand.primary"
+                        _hover={{ bg: 'brand.primary', color: 'white' }}
+                        whileHover={{ scale: 1.05 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        Edit
+                      </MotionButton>
+                    </NextLink>
+                    <MotionButton
+                      size="sm"
+                      variant="outline"
+                      borderColor="red.500"
+                      color="red.500"
+                      _hover={{ bg: 'red.500', color: 'white' }}
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ duration: 0.2 }}
+                      onClick={() => {
+                        setPostToDelete(post.id);
+                        onOpen();
+                      }}
+                    >
+                      Delete
+                    </MotionButton>
+                  </HStack>
                 </HStack>
-              </LinkBox>
+              </MotionBox>
             ))}
           </VStack>
         )}
       </VStack>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        isOpen={isDeleteOpen}
-        leastDestructiveRef={cancelRef as React.RefObject<FocusableElement>}
-        onClose={() => setIsDeleteOpen(false)}
-      >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Post
-            </AlertDialogHeader>
-            <AlertDialogBody>
-              Are you sure you want to delete this post? This action cannot be undone.
-            </AlertDialogBody>
-            <AlertDialogFooter>
-              <ChakraButton ref={cancelRef} onClick={() => setIsDeleteOpen(false)}>
-                Cancel
-              </ChakraButton>
-              <ChakraButton
-                colorScheme="red"
-                onClick={() => postToDelete && handleDelete(postToDelete)}
-                ml={3}
-              >
-                Delete
-              </ChakraButton>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      <Modal isOpen={isOpen} onClose={onClose}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Confirm Deletion</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="red" onClick={handleDelete} isLoading={loading}>
+              Delete
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </MotionBox>
   );
 }

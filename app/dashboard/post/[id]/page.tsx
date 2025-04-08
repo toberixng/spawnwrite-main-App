@@ -1,8 +1,8 @@
 // app/dashboard/post/[id]/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Box, Heading, Text, VStack, HStack, Spinner } from '@chakra-ui/react';
+import { useEffect, useState } from 'react';
+import { Box, Heading, Text, VStack, Button, HStack, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../../../lib/supabase';
 import { useRouter, useParams } from 'next/navigation';
@@ -10,10 +10,10 @@ import { toast } from 'sonner';
 import NextLink from 'next/link';
 
 const MotionBox = motion(Box);
-const MotionButton = motion(Box);
+const MotionButton = motion(Button);
 
-export default function PostView() {
-  const [post, setPost] = useState<any>(null);
+export default function PostPage() {
+  const [post, setPost] = useState<{ title: string; content: string; created_at: string; published: boolean; views: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const { id } = useParams();
@@ -28,20 +28,30 @@ export default function PostView() {
 
       const { data, error } = await supabase
         .from('posts')
-        .select('title, content, created_at, published')
+        .select('title, content, created_at, published, views')
         .eq('id', id)
         .eq('user_id', user.id)
         .single();
 
       if (error) {
         toast.error('Error loading post');
+        router.push('/dashboard');
       } else {
         setPost(data);
+        // Increment views
+        const { error: updateError } = await supabase
+          .from('posts')
+          .update({ views: (data.views || 0) + 1 })
+          .eq('id', id)
+          .eq('user_id', user.id);
+        if (updateError) {
+          console.error('Failed to increment views:', updateError);
+        }
       }
       setLoading(false);
     };
 
-    fetchPost();
+    if (id) fetchPost();
   }, [id, router]);
 
   const handleLogout = async () => {
@@ -62,13 +72,7 @@ export default function PostView() {
     );
   }
 
-  if (!post) {
-    return (
-      <Box minH="100vh" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
-        <Text>Post not found</Text>
-      </Box>
-    );
-  }
+  if (!post) return null;
 
   return (
     <MotionBox
@@ -115,11 +119,11 @@ export default function PostView() {
         <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
           {post.title}
         </Heading>
-        <Text fontSize="sm" color="gray.500">
-          Created: {new Date(post.created_at).toLocaleDateString()} | {post.published ? 'Published' : 'Draft'}
-        </Text>
         <Box bg="white" p={6} borderRadius="lg" boxShadow="sm" w="full">
           <Text whiteSpace="pre-wrap">{post.content}</Text>
+          <Text mt={4} fontSize="sm" color="gray.500">
+            Created: {new Date(post.created_at).toLocaleDateString()} | Status: {post.published ? 'Published' : 'Draft'} | Views: {post.views}
+          </Text>
         </Box>
         <NextLink href={`/dashboard/editor?id=${id}`} passHref legacyBehavior>
           <MotionButton
