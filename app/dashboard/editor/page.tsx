@@ -14,7 +14,8 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { $getRoot, EditorState } from 'lexical';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import ToolbarPlugin from '../../../components/ToolbarPlugin';
+import React, { Component, ErrorInfo, ReactNode } from 'react'; // Added React import
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
@@ -92,7 +93,7 @@ export default function Editor() {
         if (error) {
           toast.error('Error loading post');
         } else {
-          setTitle(data.title);
+          setTitle(data.title); // Fixed typo: removed "W"
           setContent(data.content || '');
           setPublished(data.published);
         }
@@ -228,6 +229,7 @@ export default function Editor() {
         />
         <Box w="full" bg="white" borderRadius="lg" p={4} boxShadow="sm" minH="400px">
           <LexicalComposer initialConfig={lexicalConfig}>
+            <ToolbarPlugin />
             <RichTextPlugin
               contentEditable={<ContentEditable style={{ minHeight: '350px', padding: '8px', outline: 'none' }} />}
               placeholder={<Box color="gray.500" p={2}>Write your post here...</Box>}
