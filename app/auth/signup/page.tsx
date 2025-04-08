@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
-import OAuthButton from '../../../features/auth/OAuthButton'; // Import the new component
+import OAuthButton from '../../../features/auth/OAuthButton';
 
 const passwordSchema = z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/, 'Password must have 1 upper, 1 lower, 1 number, 1 special character');
 const commonPasswords = ['password123', 'admin123', 'welcome1'];
@@ -20,6 +20,7 @@ const commonPasswords = ['password123', 'admin123', 'welcome1'];
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [handle, setHandle] = useState(''); // New handle state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +33,8 @@ export default function Signup() {
     const newErrors: { [key: string]: string } = {};
     if (!firstName) newErrors.firstName = 'First name is required';
     if (!lastName) newErrors.lastName = 'Last name is required';
+    if (!handle) newErrors.handle = 'Handle is required'; // Validate handle
+    else if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) newErrors.handle = 'Handle must be 3-20 characters, letters, numbers, or underscores only';
     if (!z.string().email().safeParse(email).success) newErrors.email = 'Invalid email format';
     try {
       passwordSchema.parse(password);
@@ -65,7 +68,7 @@ export default function Signup() {
         email,
         password,
         options: { 
-          data: { first_name: firstName, last_name: lastName },
+          data: { first_name: firstName, last_name: lastName, handle }, // Store handle in metadata
           emailRedirectTo: 'http://localhost:3000/dashboard',
         },
       });
@@ -89,7 +92,7 @@ export default function Signup() {
           toast.error('This email is already registered. Please log in instead.');
         } else {
           toast.success('Check your email to confirm your account!');
-          router.push('/dashboard');
+          router.push(`/${handle}`); // Redirect to /[handle]
         }
       } else {
         toast.error('Unexpected response from server. Please try again.');
@@ -214,6 +217,19 @@ export default function Signup() {
               />
               {errors.lastName && <Text color="red.500" fontSize="sm">{errors.lastName}</Text>}
             </FormControl>
+            <FormControl isInvalid={!!errors.handle}>
+              <FormLabel color="brand.primary">Handle</FormLabel>
+              <Input
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                bg="brand.light"
+                borderColor="brand.primary"
+                _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+                isDisabled={userExists || loading}
+                placeholder="e.g., johndoe123"
+              />
+              {errors.handle && <Text color="red.500" fontSize="sm">{errors.handle}</Text>}
+            </FormControl>
             <FormControl isInvalid={!!errors.email}>
               <FormLabel color="brand.primary">Email</FormLabel>
               <InputGroup>
@@ -317,7 +333,7 @@ export default function Signup() {
                     Send Magic Link
                   </Button>
                 </motion.div>
-                <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} /> {/* Add OAuth button */}
+                <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} />
               </>
             )}
             

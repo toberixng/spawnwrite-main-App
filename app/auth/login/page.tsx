@@ -10,7 +10,7 @@ import { supabase } from '../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import OAuthButton from '../../../features/auth/OAuthButton'; // Import the new component
+import OAuthButton from '../../../features/auth/OAuthButton';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
@@ -35,13 +35,14 @@ export default function Login() {
     if (!validateForm()) return;
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error(error.message);
     } else {
+      const handle = data.user?.user_metadata.handle || 'user'; // Default to 'user' if no handle
       toast.success('Logged in successfully!');
-      router.push('/dashboard');
+      router.push(`/${handle}`); // Redirect to /[handle]
     }
   };
 
@@ -164,7 +165,7 @@ export default function Login() {
         >
           Send Magic Link
         </MotionButton>
-        <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} /> {/* Add OAuth button */}
+        <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} />
         <Text fontSize="sm">
           Don’t have an account? <Link href="/auth/signup" color="brand.accent">Sign Up</Link>
         </Text>

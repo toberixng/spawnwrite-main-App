@@ -2,72 +2,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Box, Heading, Input, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
+import { Box, Heading, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../../lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import NextLink from 'next/link';
-import { LexicalComposer } from '@lexical/react/LexicalComposer';
-import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
-import { ContentEditable } from '@lexical/react/LexicalContentEditable';
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
-import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { $getRoot, EditorState } from 'lexical';
-import ToolbarPlugin from '../../../components/ToolbarPlugin';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import Editor from '../../../components/Editor';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
-function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
-  return (
-    <CustomErrorBoundary onError={(error) => console.error(error)}>
-      {children as React.ReactElement}
-    </CustomErrorBoundary>
-  );
-}
-
-interface ErrorBoundaryProps {
-  children: React.ReactElement;
-  onError?: (error: Error) => void;
-}
-
-class CustomErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Lexical Error:', error, errorInfo);
-    if (this.props.onError) {
-      this.props.onError(error);
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <Box color="red.500">Something went wrong in the editor.</Box>;
-    }
-    return this.props.children;
-  }
-}
-
-const lexicalConfig = {
-  namespace: 'SpawnWriteEditor',
-  onError: (error: Error) => console.error(error),
-  theme: {
-    paragraph: 'editor-paragraph',
-    text: {
-      bold: 'editor-bold',
-      italic: 'editor-italic',
-    },
-  },
-};
-
-export default function Editor() {
+export default function EditorPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState<string>('');
   const [published, setPublished] = useState(false);
@@ -77,9 +23,8 @@ export default function Editor() {
   const searchParams = useSearchParams();
   const postId = searchParams.get('id');
 
-  // Load draft from localStorage on mount
   useEffect(() => {
-    if (!postId) { // Only load draft for new posts, not edits
+    if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
       const savedDraft = localStorage.getItem(draftKey);
       if (savedDraft) {
@@ -91,7 +36,6 @@ export default function Editor() {
     }
   }, [postId]);
 
-  // Fetch existing post if editing
   useEffect(() => {
     if (postId) {
       const fetchPost = async () => {
@@ -115,16 +59,12 @@ export default function Editor() {
     }
   }, [postId]);
 
-  const handleContentChange = (editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot();
-      const newContent = root.getTextContent();
-      setContent(newContent);
-      if (!postId) { // Only autosave for new posts
-        const draftKey = 'spawnwrite-draft-new';
-        localStorage.setItem(draftKey, JSON.stringify({ title, content: newContent }));
-      }
-    });
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent);
+    if (!postId) {
+      const draftKey = 'spawnwrite-draft-new';
+      localStorage.setItem(draftKey, JSON.stringify({ title, content: newContent }));
+    }
   };
 
   const handleClearDraft = () => {
@@ -170,7 +110,7 @@ export default function Editor() {
       if (error) {
         toast.error(error.message);
       } else {
-        localStorage.removeItem('spawnwrite-draft-new'); // Clear draft on successful save
+        localStorage.removeItem('spawnwrite-draft-new');
         toast.success('Post saved!');
         router.push('/dashboard');
       }
@@ -241,31 +181,13 @@ export default function Editor() {
         <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
           {postId ? 'Edit Post' : 'New Post'}
         </Heading>
-        <Input
-          placeholder="Post Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          bg="white"
-          borderColor="gray.300"
-          _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #b8c103' }}
-          color="brand.primary"
-          fontSize="lg"
-          p={6}
-          borderRadius="lg"
-          boxShadow="sm"
+        <Editor
+          initialTitle={title}
+          initialContent={content}
+          onTitleChange={setTitle}
+          onContentChange={handleContentChange}
+          isLoading={loading}
         />
-        <Box w="full" bg="white" borderRadius="lg" p={4} boxShadow="sm" minH="400px">
-          <LexicalComposer initialConfig={lexicalConfig}>
-            <ToolbarPlugin />
-            <RichTextPlugin
-              contentEditable={<ContentEditable style={{ minHeight: '350px', padding: '8px', outline: 'none' }} />}
-              placeholder={<Box color="gray.500" p={2}>Write your post here...</Box>}
-              ErrorBoundary={LexicalErrorBoundary}
-            />
-            <HistoryPlugin />
-            <OnChangePlugin onChange={handleContentChange} />
-          </LexicalComposer>
-        </Box>
         <HStack w="full" justify="space-between">
           <FormControl display="flex" alignItems="center" w="auto">
             <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold">
@@ -279,7 +201,7 @@ export default function Editor() {
             />
           </FormControl>
           <HStack spacing={4}>
-            {!postId && ( // Only show Clear Draft for new posts
+            {!postId && (
               <MotionButton
                 bg="gray.500"
                 color="white"
