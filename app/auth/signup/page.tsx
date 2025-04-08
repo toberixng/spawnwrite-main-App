@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import {
   Box, Button, FormControl, FormLabel, Input, Heading, Text, Link, InputGroup, InputRightElement, IconButton, Progress,
+  Alert, AlertIcon, AlertDescription
 } from '@chakra-ui/react';
 import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons';
 import { supabase } from '../../../lib/supabase';
@@ -27,26 +28,14 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [userExists, setUserExists] = useState(false);
   const router = useRouter();
 
-  const validateForm = async () => {
+  const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
     if (!firstName) newErrors.firstName = 'First name is required';
     if (!lastName) newErrors.lastName = 'Last name is required';
     if (!z.string().email().safeParse(email).success) newErrors.email = 'Invalid email format';
-
-    // Check if email is already registered
-    const { data: existingUser, error: fetchError } = await supabase
-      .from('users')
-      .select('email')
-      .eq('email', email)
-      .single();
-    if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "no rows" error
-      newErrors.email = 'Error checking email availability';
-    } else if (existingUser) {
-      newErrors.email = 'This email is already registered';
-    }
-
     try {
       passwordSchema.parse(password);
       if (commonPasswords.some((p) => password.toLowerCase().includes(p))) {
@@ -69,20 +58,48 @@ export default function Signup() {
   };
 
   const handleSignup = async () => {
-    if (!(await validateForm())) return;
+    if (!validateForm()) return;
+    
     setLoading(true);
+    setUserExists(false); // Reset state before attempting signup
+    
     await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { first_name: firstName, last_name: lastName } },
     });
+    
     setLoading(false);
+    
     if (error) {
-      toast.error(error.message);
+      console.log('Signup Error Details:', {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name,
+      });
+      if (error.message === 'User already registered') {
+        setUserExists(true);
+        toast.error('This email is already registered. Please log in instead.');
+      } else if (error.status === 429) {
+        toast.error('Too many signup attempts. Please wait a bit and try again.');
+      } else {
+        toast.error(error.message || 'An error occurred during signup.');
+      }
+    } else if (data.user) {
+      console.log('Signup Response:', { user: data.user, session: data.session });
+      // Check if the user is already confirmed or has a session (indicating existing account)
+      if (data.session || data.user.confirmed_at) {
+        setUserExists(true);
+        toast.error('This email is already registered and confirmed. Please log in instead.');
+      } else {
+        toast.success('Check your email to confirm your account!');
+        router.push('/dashboard');
+      }
     } else {
-      toast.success('Check your email to confirm your account!');
-      router.push('/dashboard');
+      console.log('Unexpected Response:', { data });
+      toast.error('Unexpected response from server. Please try again.');
     }
   };
 
@@ -93,6 +110,10 @@ export default function Signup() {
     setLoading(false);
     if (error) toast.error(error.message);
     else toast.success('Magic link sent—check your email!');
+  };
+
+  const redirectToLogin = () => {
+    router.push('/auth/login');
   };
 
   return (
@@ -125,6 +146,16 @@ export default function Signup() {
         <Heading color="brand.primary" fontSize={{ base: 'xl', md: '2xl' }}>
           Sign Up
         </Heading>
+        
+        {userExists && (
+          <Alert status="info" borderRadius="md">
+            <AlertIcon />
+            <AlertDescription>
+              This email is already registered. Please log in instead.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <FormControl isInvalid={!!errors.firstName}>
           <FormLabel color="brand.primary">First Name</FormLabel>
           <Input
@@ -133,6 +164,7 @@ export default function Signup() {
             bg="brand.light"
             borderColor="brand.primary"
             _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+            isDisabled={userExists}
           />
           {errors.firstName && <Text color="red.500" fontSize="sm">{errors.firstName}</Text>}
         </FormControl>
@@ -144,6 +176,7 @@ export default function Signup() {
             bg="brand.light"
             borderColor="brand.primary"
             _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
+            isDisabled={userExists}
           />
           {errors.lastName && <Text color="red.500" fontSize="sm">{errors.lastName}</Text>}
         </FormControl>
@@ -152,62 +185,87 @@ export default function Signup() {
           <Input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setUserExists(false); // Reset user exists state when email changes
+            }}
             bg="brand.light"
             borderColor="brand.primary"
             _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
           />
           {errors.email && <Text color="red.500" fontSize="sm">{errors.email}</Text>}
         </FormControl>
-        <FormControl isInvalid={!!errors.password}>
-          <FormLabel color="brand.primary">Password</FormLabel>
-          <InputGroup>
-            <Input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              bg="brand.light"
-              borderColor="brand.primary"
-              _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
-            />
-            <InputRightElement>
-              <IconButton
-                aria-label="Toggle password visibility"
-                icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                onClick={() => setShowPassword(!showPassword)}
-                variant="ghost"
+        
+        {!userExists && (
+          <FormControl isInvalid={!!errors.password}>
+            <FormLabel color="brand.primary">Password</FormLabel>
+            <InputGroup>
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                bg="brand.light"
+                borderColor="brand.primary"
+                _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #c9cc00' }}
               />
-            </InputRightElement>
-          </InputGroup>
-          <Progress value={passwordStrength()} mt={2} colorScheme={passwordStrength() > 75 ? 'green' : 'yellow'} />
-          {errors.password && <Text color="red.500" fontSize="sm">{errors.password}</Text>}
-        </FormControl>
-        <MotionButton
-          bg="brand.accent"
-          color="white"
-          _hover={{ bg: '#a0a900' }}
-          onClick={handleSignup}
-          w="full"
-          isLoading={loading}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-        >
-          Sign Up
-        </MotionButton>
-        <MotionButton
-          variant="outline"
-          borderColor="brand.primary"
-          color="brand.primary"
-          onClick={handleMagicLink}
-          w="full"
-          isLoading={loading}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-        >
-          Send Magic Link
-        </MotionButton>
+              <InputRightElement>
+                <IconButton
+                  aria-label="Toggle password visibility"
+                  icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                  onClick={() => setShowPassword(!showPassword)}
+                  variant="ghost"
+                />
+              </InputRightElement>
+            </InputGroup>
+            <Progress value={passwordStrength()} mt={2} colorScheme={passwordStrength() > 75 ? 'green' : 'yellow'} />
+            {errors.password && <Text color="red.500" fontSize="sm">{errors.password}</Text>}
+          </FormControl>
+        )}
+        
+        {userExists ? (
+          <MotionButton
+            bg="brand.accent"
+            color="white"
+            _hover={{ bg: '#a0a900' }}
+            onClick={redirectToLogin}
+            w="full"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+          >
+            Go to Login
+          </MotionButton>
+        ) : (
+          <>
+            <MotionButton
+              bg="brand.accent"
+              color="white"
+              _hover={{ bg: '#a0a900' }}
+              onClick={handleSignup}
+              w="full"
+              isLoading={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+            >
+              Sign Up
+            </MotionButton>
+            <MotionButton
+              variant="outline"
+              borderColor="brand.primary"
+              color="brand.primary"
+              onClick={handleMagicLink}
+              w="full"
+              isLoading={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+            >
+              Send Magic Link
+            </MotionButton>
+          </>
+        )}
+        
         <Text fontSize="sm">
           Already have an account? <Link href="/auth/login" color="brand.accent">Log In</Link>
         </Text>
