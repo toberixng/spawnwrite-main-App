@@ -15,12 +15,11 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { $getRoot, EditorState } from 'lexical';
 import ToolbarPlugin from '../../../components/ToolbarPlugin';
-import React, { Component, ErrorInfo, ReactNode } from 'react'; // Added React import
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
-// Define the ErrorBoundary adapter function
 function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   return (
     <CustomErrorBoundary onError={(error) => console.error(error)}>
@@ -29,13 +28,11 @@ function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Define props interface for CustomErrorBoundary
 interface ErrorBoundaryProps {
   children: React.ReactElement;
   onError?: (error: Error) => void;
 }
 
-// Custom Error Boundary Component
 class CustomErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -80,6 +77,21 @@ export default function Editor() {
   const searchParams = useSearchParams();
   const postId = searchParams.get('id');
 
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    if (!postId) { // Only load draft for new posts, not edits
+      const draftKey = 'spawnwrite-draft-new';
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        const { title: savedTitle, content: savedContent } = JSON.parse(savedDraft);
+        setTitle(savedTitle || '');
+        setContent(savedContent || '');
+        toast.info('Loaded unsaved draft from your last session.');
+      }
+    }
+  }, [postId]);
+
+  // Fetch existing post if editing
   useEffect(() => {
     if (postId) {
       const fetchPost = async () => {
@@ -93,7 +105,7 @@ export default function Editor() {
         if (error) {
           toast.error('Error loading post');
         } else {
-          setTitle(data.title); // Fixed typo: removed "W"
+          setTitle(data.title);
           setContent(data.content || '');
           setPublished(data.published);
         }
@@ -106,8 +118,22 @@ export default function Editor() {
   const handleContentChange = (editorState: EditorState) => {
     editorState.read(() => {
       const root = $getRoot();
-      setContent(root.getTextContent());
+      const newContent = root.getTextContent();
+      setContent(newContent);
+      if (!postId) { // Only autosave for new posts
+        const draftKey = 'spawnwrite-draft-new';
+        localStorage.setItem(draftKey, JSON.stringify({ title, content: newContent }));
+      }
     });
+  };
+
+  const handleClearDraft = () => {
+    if (!postId) {
+      localStorage.removeItem('spawnwrite-draft-new');
+      setTitle('');
+      setContent('');
+      toast.success('Draft cleared.');
+    }
   };
 
   const handleSave = async () => {
@@ -144,6 +170,7 @@ export default function Editor() {
       if (error) {
         toast.error(error.message);
       } else {
+        localStorage.removeItem('spawnwrite-draft-new'); // Clear draft on successful save
         toast.success('Post saved!');
         router.push('/dashboard');
       }
@@ -251,23 +278,44 @@ export default function Editor() {
               colorScheme="yellow"
             />
           </FormControl>
-          <MotionButton
-            bg="brand.primary"
-            color="white"
-            _hover={{ bg: 'brand.accent' }}
-            onClick={handleSave}
-            isLoading={loading}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            px={6}
-            py={3}
-            borderRadius="lg"
-            boxShadow="md"
-            fontWeight="bold"
-          >
-            Save Post
-          </MotionButton>
+          <HStack spacing={4}>
+            {!postId && ( // Only show Clear Draft for new posts
+              <MotionButton
+                bg="gray.500"
+                color="white"
+                _hover={{ bg: 'gray.600' }}
+                onClick={handleClearDraft}
+                isLoading={loading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                px={6}
+                py={3}
+                borderRadius="lg"
+                boxShadow="md"
+                fontWeight="bold"
+              >
+                Clear Draft
+              </MotionButton>
+            )}
+            <MotionButton
+              bg="brand.primary"
+              color="white"
+              _hover={{ bg: 'brand.accent' }}
+              onClick={handleSave}
+              isLoading={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              px={6}
+              py={3}
+              borderRadius="lg"
+              boxShadow="md"
+              fontWeight="bold"
+            >
+              Save Post
+            </MotionButton>
+          </HStack>
         </HStack>
       </VStack>
     </MotionBox>
