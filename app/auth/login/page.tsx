@@ -10,6 +10,7 @@ import { supabase } from '../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import OAuthButton from '../../../features/auth/OAuthButton'; // Import the new component
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
@@ -33,7 +34,7 @@ export default function Login() {
   const handleLogin = async () => {
     if (!validateForm()) return;
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay to slow brute force
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
@@ -46,7 +47,7 @@ export default function Login() {
 
   const handleMagicLink = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { error } = await supabase.auth.signInWithOtp({ email });
     setLoading(false);
     if (error) toast.error(error.message);
@@ -59,9 +60,9 @@ export default function Login() {
       return;
     }
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'http://localhost:3000/auth/reset-password', // Adjust for production URL
+      redirectTo: 'http://localhost:3000/auth/reset-password',
     });
     setLoading(false);
     if (error) toast.error(error.message);
@@ -163,6 +164,7 @@ export default function Login() {
         >
           Send Magic Link
         </MotionButton>
+        <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} /> {/* Add OAuth button */}
         <Text fontSize="sm">
           Don’t have an account? <Link href="/auth/signup" color="brand.accent">Sign Up</Link>
         </Text>
