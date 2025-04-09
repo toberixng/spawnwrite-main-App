@@ -4,18 +4,18 @@
 import { useState, useEffect } from 'react';
 import { Box, Heading, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../lib/supabase'; // Adjust path
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import NextLink from 'next/link';
-import Editor from '../../../components/Editor';
+import Editor from '../../../components/Editor'; // Adjust path
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
 export default function EditorPage() {
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState<string>('');
+  const [content, setContent] = useState<string>(''); // Start empty
   const [published, setPublished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -23,21 +23,20 @@ export default function EditorPage() {
   const searchParams = useSearchParams();
   const postId = searchParams.get('id');
 
+  // Load draft or post only once on mount
   useEffect(() => {
+    console.log('EditorPage: Mounted, postId:', postId); // Debug
     if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
       const savedDraft = localStorage.getItem(draftKey);
       if (savedDraft) {
         const { title: savedTitle, content: savedContent } = JSON.parse(savedDraft);
+        console.log('EditorPage: Loading draft:', { savedTitle, savedContent }); // Debug
         setTitle(savedTitle || '');
         setContent(savedContent || '');
         toast.info('Loaded unsaved draft from your last session.');
       }
-    }
-  }, [postId]);
-
-  useEffect(() => {
-    if (postId) {
+    } else {
       const fetchPost = async () => {
         setFetching(true);
         const { data, error } = await supabase
@@ -48,8 +47,10 @@ export default function EditorPage() {
 
         if (error) {
           toast.error('Error loading post');
+          console.log('EditorPage: Fetch error:', error); // Debug
         } else {
-          setTitle(data.title);
+          console.log('EditorPage: Post loaded:', data); // Debug
+          setTitle(data.title || '');
           setContent(data.content || '');
           setPublished(data.published);
         }
@@ -57,9 +58,19 @@ export default function EditorPage() {
       };
       fetchPost();
     }
-  }, [postId]);
+  }, [postId]); // Only runs when postId changes
+
+  const handleTitleChange = (newTitle: string) => {
+    console.log('EditorPage: Title changed:', newTitle); // Debug
+    setTitle(newTitle);
+    if (!postId) {
+      const draftKey = 'spawnwrite-draft-new';
+      localStorage.setItem(draftKey, JSON.stringify({ title: newTitle, content }));
+    }
+  };
 
   const handleContentChange = (newContent: string) => {
+    console.log('EditorPage: Content changed:', newContent); // Debug
     setContent(newContent);
     if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
@@ -77,8 +88,10 @@ export default function EditorPage() {
   };
 
   const handleSave = async () => {
+    console.log('EditorPage: Saving:', { title, content, published }); // Debug
     if (!title.trim() || !content.trim()) {
       toast.error('Title and content cannot be empty');
+      console.log('EditorPage: Validation failed, current state:', { title, content }); // Debug
       return;
     }
 
@@ -98,6 +111,7 @@ export default function EditorPage() {
 
       if (error) {
         toast.error(error.message);
+        console.log('EditorPage: Update error:', error); // Debug
       } else {
         toast.success('Post updated!');
         router.push('/dashboard');
@@ -109,6 +123,7 @@ export default function EditorPage() {
 
       if (error) {
         toast.error(error.message);
+        console.log('EditorPage: Insert error:', error); // Debug
       } else {
         localStorage.removeItem('spawnwrite-draft-new');
         toast.success('Post saved!');
@@ -188,11 +203,12 @@ export default function EditorPage() {
           {postId ? 'Edit Post' : 'New Post'}
         </Heading>
         <Editor
-          initialTitle={title}
-          initialContent={content}
-          onTitleChange={setTitle}
+          title={title}
+          content={content}
+          onTitleChange={handleTitleChange}
           onContentChange={handleContentChange}
           isLoading={loading}
+          postId={postId || undefined}
         />
         <HStack w="full" justify="space-between">
           <FormControl display="flex" alignItems="center" w="auto">
