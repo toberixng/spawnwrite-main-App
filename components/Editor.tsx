@@ -3,8 +3,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Box, Input, HStack, Button, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react';
-import { supabase } from '../lib/supabase'; // Adjust path
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { supabase } from '../lib/supabase'; // Add this back (adjust path as needed)
 import 'quill/dist/quill.snow.css';
+
+// Configure R2 client with your endpoint
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: 'https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com',
+  credentials: {
+    accessKeyId: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID || 'YOUR_ACCESS_KEY',
+    secretAccessKey: process.env.NEXT_PUBLIC_R2_SECRET_ACCESS_KEY || 'YOUR_SECRET_KEY',
+  },
+});
 
 interface EditorProps {
   title: string;
@@ -30,7 +41,6 @@ export default function Editor({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load DOMPurify client-side
   useEffect(() => {
     if (typeof window !== 'undefined') {
       import('dompurify').then((module) => {
@@ -41,7 +51,6 @@ export default function Editor({
     }
   }, []);
 
-  // Initialize Quill and sync content
   useEffect(() => {
     const loadQuill = async () => {
       try {
@@ -73,18 +82,15 @@ export default function Editor({
             placeholder: 'Start writing here...',
           });
 
-          // Set initial content and notify parent
           if (content) {
             editorRef.current.clipboard.dangerouslyPasteHTML(content);
           } else {
             const initialHtml = editorRef.current.root.innerHTML;
-            console.log('Editor: Initial content set:', initialHtml); // Debug
-            onContentChange(initialHtml); // Ensure parent gets empty content
+            onContentChange(initialHtml);
           }
 
           editorRef.current.on('text-change', () => {
             const html = editorRef.current?.root.innerHTML || '';
-            console.log('Editor: Quill text-change:', html); // Debug
             onContentChange(html);
             if (title.trim() && html.trim()) {
               debounceSave({ title, content: html });
@@ -108,7 +114,7 @@ export default function Editor({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [onContentChange, title]); // title as dep to re-save on title change
+  }, [onContentChange, title]);
 
   const debounceSave = (data: { title: string; content: string }) => {
     if (timeoutRef.current) {
@@ -152,30 +158,43 @@ export default function Editor({
     if (!file || !editorRef.current) return;
 
     try {
+      console.log('Editor: Uploading file:', { name: file.name, size: file.size });
+
+      // Enforce 1MB limit (1MB = 1,048,576 bytes)
+      if (file.size > 1048576) {
+        throw new Error('File size exceeds 1MB limit');
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `public/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(filePath, file);
+      // Convert File to Uint8Array for AWS SDK
+      const arrayBuffer = await file.arrayBuffer();
+      const fileBody = new Uint8Array(arrayBuffer);
 
-      if (uploadError) throw uploadError;
+      const command = new PutObjectCommand({
+        Bucket: 'images',
+        Key: filePath,
+        Body: fileBody,
+        ContentType: file.type,
+      });
 
-      const { data: urlData } = supabase.storage
-        .from('images')
-        .getPublicUrl(filePath);
+      await r2Client.send(command);
+      console.log('Editor: File uploaded to R2 successfully');
 
-      if (!urlData?.publicUrl) throw new Error('Failed to get public URL');
+      // Construct public URL using your endpoint
+      const publicUrl = `https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com/images/${filePath}`;
+      console.log('Editor: R2 Public URL:', publicUrl);
 
       const range = editorRef.current.getSelection() || { index: editorRef.current.getLength() };
-      editorRef.current.insertEmbed(range.index, 'image', urlData.publicUrl);
+      editorRef.current.insertEmbed(range.index, 'image', publicUrl);
       const newContent = editorRef.current.root.innerHTML;
-      console.log('Editor: Image uploaded, new content:', newContent); // Debug
+      console.log('Editor: Image uploaded, new content:', newContent);
       onContentChange(newContent);
-    } catch (error) {
-      console.error('Image upload failed:', error);
-      alert('Failed to upload image');
+    } catch (error: any) {
+      console.error('Image upload failed:', error.message || error);
+      alert(`Failed to upload image: ${error.message || 'Unknown error'}`);
     } finally {
       e.target.value = '';
     }
@@ -183,7 +202,6 @@ export default function Editor({
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTitle = e.target.value;
-    console.log('Editor: Title changed:', newTitle); // Debug
     onTitleChange(newTitle);
     const currentContent = editorRef.current?.root.innerHTML || content;
     if (newTitle.trim() && currentContent.trim()) {
