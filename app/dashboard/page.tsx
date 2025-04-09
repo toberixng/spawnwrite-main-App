@@ -73,7 +73,7 @@ export default function Dashboard() {
     } else {
       toast.success('Logged out successfully!');
       router.push('/auth/login');
-      router.refresh(); // Ensure session clears
+      router.refresh();
     }
   };
 
@@ -97,7 +97,7 @@ export default function Dashboard() {
       <MotionBox
         as="nav"
         bg="brand.primary"
-        color="white" // Set navbar text color to white
+        color="white"
         p={4}
         position="sticky"
         top={0}
@@ -117,6 +117,11 @@ export default function Dashboard() {
             <NextLink href="/dashboard/editor" passHref legacyBehavior>
               <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Editor
+              </MotionButton>
+            </NextLink>
+            <NextLink href="/dashboard/settings" passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+                Settings
               </MotionButton>
             </NextLink>
             <MotionButton bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>

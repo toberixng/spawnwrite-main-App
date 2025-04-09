@@ -1,36 +1,31 @@
 // app/dashboard/post/[id]/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Box, Heading, Text, VStack, Button, HStack, Spinner } from '@chakra-ui/react';
+import { useState, useEffect } from 'react';
+import { Box, Heading, VStack, Button, HStack, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../../../lib/supabase';
 import { useRouter, useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import NextLink from 'next/link';
+import DOMPurify from 'dompurify';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
 export default function PostPage() {
-  const [post, setPost] = useState<{ title: string; content: string; created_at: string; published: boolean; views: number } | null>(null);
+  const [post, setPost] = useState<{ title: string; content: string; published: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const { id } = useParams();
+  const { id } = useParams(); // Get dynamic route param
 
   useEffect(() => {
     const fetchPost = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth/login');
-        return;
-      }
-
+      setLoading(true);
       const { data, error } = await supabase
         .from('posts')
-        .select('title, content, created_at, published, views')
+        .select('title, content, published')
         .eq('id', id)
-        .eq('user_id', user.id)
         .single();
 
       if (error) {
@@ -38,19 +33,9 @@ export default function PostPage() {
         router.push('/dashboard');
       } else {
         setPost(data);
-        // Increment views
-        const { error: updateError } = await supabase
-          .from('posts')
-          .update({ views: (data.views || 0) + 1 })
-          .eq('id', id)
-          .eq('user_id', user.id);
-        if (updateError) {
-          console.error('Failed to increment views:', updateError);
-        }
       }
       setLoading(false);
     };
-
     if (id) fetchPost();
   }, [id, router]);
 
@@ -61,6 +46,7 @@ export default function PostPage() {
     } else {
       toast.success('Logged out successfully!');
       router.push('/auth/login');
+      router.refresh();
     }
   };
 
@@ -73,6 +59,8 @@ export default function PostPage() {
   }
 
   if (!post) return null;
+
+  const sanitizedContent = DOMPurify.sanitize(post.content);
 
   return (
     <MotionBox
@@ -99,16 +87,26 @@ export default function PostPage() {
           <Heading size="md">SpawnWrite</Heading>
           <HStack spacing={4}>
             <NextLink href="/dashboard" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }}>
                 Dashboard
               </MotionButton>
             </NextLink>
             <NextLink href="/dashboard/editor" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }}>
                 Editor
               </MotionButton>
             </NextLink>
-            <MotionButton bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
+            <NextLink href={`/dashboard/editor?id=${id}`} passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }}>
+                Edit Post
+              </MotionButton>
+            </NextLink>
+            <NextLink href="/dashboard/settings" passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }}>
+                Settings
+              </MotionButton>
+            </NextLink>
+            <MotionButton bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} onClick={handleLogout}>
               Logout
             </MotionButton>
           </HStack>
@@ -119,30 +117,23 @@ export default function PostPage() {
         <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
           {post.title}
         </Heading>
-        <Box bg="white" p={6} borderRadius="lg" boxShadow="sm" w="full">
-          <Text whiteSpace="pre-wrap">{post.content}</Text>
-          <Text mt={4} fontSize="sm" color="gray.500">
-            Created: {new Date(post.created_at).toLocaleDateString()} | Status: {post.published ? 'Published' : 'Draft'} | Views: {post.views}
-          </Text>
-        </Box>
-        <NextLink href={`/dashboard/editor?id=${id}`} passHref legacyBehavior>
-          <MotionButton
-            as="a"
-            bg="brand.primary"
-            color="white"
-            _hover={{ bg: 'brand.accent' }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            px={6}
-            py={3}
-            borderRadius="lg"
-            boxShadow="md"
-            fontWeight="bold"
-          >
-            Edit Post
-          </MotionButton>
-        </NextLink>
+        <Box
+          w="full"
+          p={4}
+          bg="white"
+          borderRadius="md"
+          border="1px solid"
+          borderColor="gray.200"
+          sx={{
+            '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
+            '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
+            '& p': { mb: 2 },
+            '& ul, & ol': { pl: 6, mb: 2 },
+            '& blockquote': { borderLeft: '4px solid', borderColor: 'gray.300', pl: 4, color: 'gray.600', mb: 2 },
+            '& code': { bg: 'gray.100', p: 2, borderRadius: 'md', display: 'block', overflowX: 'auto', mb: 2 },
+          }}
+          dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+        />
       </VStack>
     </MotionBox>
   );

@@ -1,124 +1,173 @@
 // components/Editor.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Box, Input, VStack } from '@chakra-ui/react';
-import { LexicalComposer } from '@lexical/react/LexicalComposer';
-import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
-import { ContentEditable } from '@lexical/react/LexicalContentEditable';
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
-import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { $getRoot, EditorState } from 'lexical';
-import ToolbarPlugin from './ToolbarPlugin';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Box, Input, HStack, Button } from '@chakra-ui/react';
+import { supabase } from '../lib/supabase'; // Adjust path to your Supabase client
+import 'quill/dist/quill.snow.css';
 
 interface EditorProps {
   initialTitle: string;
   initialContent: string;
   onTitleChange: (title: string) => void;
   onContentChange: (content: string) => void;
-  isLoading?: boolean;
+  isLoading: boolean;
+  postId?: string; // Optional ID for editing existing posts
 }
 
-function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
-  return (
-    <CustomErrorBoundary onError={(error) => console.error(error)}>
-      {children as React.ReactElement}
-    </CustomErrorBoundary>
-  );
-}
-
-interface ErrorBoundaryProps {
-  children: React.ReactElement;
-  onError?: (error: Error) => void;
-}
-
-class CustomErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Lexical Error:', error, errorInfo);
-    if (this.props.onError) {
-      this.props.onError(error);
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <Box color="red.500">Something went wrong in the editor.</Box>;
-    }
-    return this.props.children;
-  }
-}
-
-const lexicalConfig = {
-  namespace: 'SpawnWriteEditor',
-  onError: (error: Error) => console.error(error),
-  theme: {
-    paragraph: 'editor-paragraph',
-    text: {
-      bold: 'editor-bold',
-      italic: 'editor-italic',
-    },
-  },
-};
-
-export default function Editor({ initialTitle, initialContent, onTitleChange, onContentChange, isLoading }: EditorProps) {
-  const [title, setTitle] = useState(initialTitle);
-  const [content, setContent] = useState(initialContent);
+export default function Editor({
+  initialTitle,
+  initialContent,
+  onTitleChange,
+  onContentChange,
+  isLoading,
+  postId,
+}: EditorProps) {
+  const [title, setTitle] = useState('');
+  const [isEditorLoaded, setIsEditorLoaded] = useState(false);
+  const quillRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<any>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setTitle(initialTitle);
-    setContent(initialContent);
-  }, [initialTitle, initialContent]);
+  }, [initialTitle]);
 
-  const handleContentChange = (editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot();
-      const newContent = root.getTextContent();
-      setContent(newContent);
-      onContentChange(newContent);
-    });
+  useEffect(() => {
+    const loadQuill = async () => {
+      try {
+        const Quill = (await import('quill')).default;
+        if (quillRef.current && !editorRef.current) {
+          editorRef.current = new Quill(quillRef.current, {
+            theme: 'snow',
+            modules: {
+              toolbar: [
+                ['bold', 'italic', 'code'],
+                [{ header: 1 }, { header: 2 }],
+                [{ list: 'ordered' }, { list: 'bullet' }],
+                ['link'],
+                ['undo', 'redo'],
+              ],
+              history: {
+                delay: 1000,
+                maxStack: 100,
+              },
+            },
+            placeholder: 'Start writing here...',
+          });
+
+          if (initialContent) {
+            editorRef.current.clipboard.dangerouslyPasteHTML(initialContent);
+          }
+
+          editorRef.current.on('text-change', () => {
+            const html = editorRef.current?.root.innerHTML || '';
+            onContentChange(html);
+            debounceSave({ title, content: html });
+          });
+
+          setIsEditorLoaded(true);
+        }
+      } catch (error) {
+        console.error('Failed to load Quill editor:', error);
+      }
+    };
+
+    loadQuill();
+
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.off('text-change');
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [onContentChange, initialContent, title]);
+
+  const debounceSave = (data: { title: string; content: string }) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        const updates = {
+          title: data.title,
+          content: data.content,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = postId
+          ? await supabase.from('posts').update(updates).eq('id', postId)
+          : await supabase.from('posts').upsert({ ...updates, created_at: new Date().toISOString() });
+        if (error) throw error;
+      } catch (error) {
+        console.error('Autosave failed:', error);
+      }
+    }, 2000); // 2-second delay
+  };
+
+  const handleUndo = () => editorRef.current?.history.undo();
+  const handleRedo = () => editorRef.current?.history.redo();
+  const handleLink = () => {
+    const url = prompt('Enter URL');
+    if (url) editorRef.current?.format('link', url);
   };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTitle = e.target.value;
     setTitle(newTitle);
     onTitleChange(newTitle);
+    debounceSave({ title: newTitle, content: editorRef.current?.root.innerHTML || '' });
   };
 
   return (
-    <VStack spacing={4} w="full">
+    <Box w="full">
       <Input
-        placeholder="Post Title"
         value={title}
         onChange={handleTitleChange}
-        bg="white"
-        borderColor="gray.300"
-        _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #b8c103' }}
-        color="brand.primary"
-        fontSize="lg"
-        p={6}
-        borderRadius="lg"
-        boxShadow="sm"
+        placeholder="Enter post title"
+        fontSize="2xl"
+        fontWeight="bold"
+        border="none"
+        p={2}
+        mb={4}
+        _focus={{ outline: 'none', boxShadow: 'none' }}
         isDisabled={isLoading}
       />
-      <Box w="full" bg="white" borderRadius="lg" p={4} boxShadow="sm" minH="400px">
-        <LexicalComposer initialConfig={lexicalConfig}>
-          <ToolbarPlugin />
-          <RichTextPlugin
-            contentEditable={<ContentEditable style={{ minHeight: '350px', padding: '8px', outline: 'none' }} />}
-            placeholder={<Box color="gray.500" p={2}>Write your post here...</Box>}
-            ErrorBoundary={LexicalErrorBoundary}
-          />
-          <HistoryPlugin />
-          <OnChangePlugin onChange={handleContentChange} />
-        </LexicalComposer>
+      <Box mb={4}>
+        <HStack spacing={2} mb={2}>
+          <Button size="sm" onClick={() => editorRef.current?.format('bold', true)} isDisabled={isLoading || !isEditorLoaded}>B</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('italic', true)} isDisabled={isLoading || !isEditorLoaded}>I</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('header', 1)} isDisabled={isLoading || !isEditorLoaded}>H1</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('header', 2)} isDisabled={isLoading || !isEditorLoaded}>H2</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('list', 'bullet')} isDisabled={isLoading || !isEditorLoaded}>• List</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('list', 'ordered')} isDisabled={isLoading || !isEditorLoaded}>1. List</Button>
+          <Button size="sm" onClick={handleLink} isDisabled={isLoading || !isEditorLoaded}>Link</Button>
+          <Button size="sm" onClick={() => editorRef.current?.format('code', true)} isDisabled={isLoading || !isEditorLoaded}>Code</Button>
+          <Button size="sm" onClick={handleUndo} isDisabled={isLoading || !isEditorLoaded}>Undo</Button>
+          <Button size="sm" onClick={handleRedo} isDisabled={isLoading || !isEditorLoaded}>Redo</Button>
+        </HStack>
       </Box>
-    </VStack>
+      <Box
+        border="1px solid"
+        borderColor="gray.200"
+        borderRadius="md"
+        p={4}
+        bg="white"
+        minH="200px"
+        sx={{
+          '& .ql-editor': { minHeight: '200px', outline: 'none' },
+          '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
+          '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
+          '& p': { mb: 2 },
+          '& ul, & ol': { pl: 6, mb: 2 },
+          '& blockquote': { borderLeft: '4px solid', borderColor: 'gray.300', pl: 4, color: 'gray.600', mb: 2 },
+          '& code': { bg: 'gray.100', p: 2, borderRadius: 'md', display: 'block', overflowX: 'auto', mb: 2 },
+        }}
+      >
+        {!isEditorLoaded && <p>Loading editor...</p>}
+        <div ref={quillRef} />
+      </Box>
+    </Box>
   );
 }
