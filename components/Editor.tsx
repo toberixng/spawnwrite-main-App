@@ -3,19 +3,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Box, Input, HStack, Button, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { supabase } from '../lib/supabase'; // Adjust path
+import { supabase } from '../lib/supabase';
 import 'quill/dist/quill.snow.css';
-
-// Configure R2 client
-const r2Client = new S3Client({
-  region: 'auto',
-  endpoint: 'https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com',
-  credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.NEXT_PUBLIC_R2_SECRET_ACCESS_KEY || '',
-  },
-});
+import Quill, { type Range } from 'quill';
 
 interface EditorProps {
   title: string;
@@ -37,7 +27,7 @@ export default function Editor({
   const [isEditorLoaded, setIsEditorLoaded] = useState(false);
   const [domPurify, setDomPurify] = useState<any>(null);
   const quillRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<Quill | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +45,45 @@ export default function Editor({
     const loadQuill = async () => {
       try {
         const Quill = (await import('quill')).default;
+        const Parchment = Quill.import('parchment');
+        const Embed = Quill.import('blots/embed') as typeof import('quill').Parchment.Embed;
+
+        class CustomVideo extends Embed {
+          static create(value: string) {
+            const node = super.create(value);
+            node.setAttribute('src', value);
+            node.setAttribute('controls', '');
+            return node;
+          }
+
+          static value(node: HTMLElement) {
+            return node.getAttribute('src');
+          }
+
+          static blotName = 'video';
+          static tagName = 'video';
+          static scope = Parchment.Scope.BLOCK;
+        }
+        Quill.register('blots/video', CustomVideo, true);
+
+        class CustomAudio extends Embed {
+          static create(value: string) {
+            const node = super.create(value);
+            node.setAttribute('src', value);
+            node.setAttribute('controls', '');
+            return node;
+          }
+
+          static value(node: HTMLElement) {
+            return node.getAttribute('src');
+          }
+
+          static blotName = 'audio';
+          static tagName = 'audio';
+          static scope = Parchment.Scope.BLOCK;
+        }
+        Quill.register('blots/audio', CustomAudio, true);
+
         if (quillRef.current && !editorRef.current) {
           editorRef.current = new Quill(quillRef.current, {
             theme: 'snow',
@@ -64,11 +93,14 @@ export default function Editor({
                   ['bold', 'italic', 'code'],
                   [{ header: 1 }, { header: 2 }],
                   [{ list: 'ordered' }, { list: 'bullet' }],
-                  ['link', 'image'],
+                  [{ align: '' }, { align: 'center' }, { align: 'right' }, { align: 'justify' }],
+                  ['link', 'image', 'video', 'audio'],
                   ['undo', 'redo'],
                 ],
                 handlers: {
-                  image: handleImageUpload,
+                  image: () => fileInputRef.current?.click(),
+                  video: () => fileInputRef.current?.click(),
+                  audio: () => fileInputRef.current?.click(),
                   undo: handleUndo,
                   redo: handleRedo,
                   link: handleLink,
@@ -97,6 +129,13 @@ export default function Editor({
             }
           });
 
+          editorRef.current.on('selection-change', (range: Range | null) => {
+            if (range) {
+              const formats = editorRef.current?.getFormat(range);
+              console.log('Active formats:', formats);
+            }
+          });
+
           setIsEditorLoaded(true);
         }
       } catch (error) {
@@ -109,6 +148,7 @@ export default function Editor({
     return () => {
       if (editorRef.current) {
         editorRef.current.off('text-change');
+        editorRef.current.off('selection-change');
       }
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -122,14 +162,20 @@ export default function Editor({
     }
     timeoutRef.current = setTimeout(async () => {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
         const updates = {
           title: data.title,
           content: data.content,
+          user_id: user.id,
           updated_at: new Date().toISOString(),
+          ...(postId ? {} : { created_at: new Date().toISOString() }),
         };
-        const { error, data: postData } = postId
-          ? await supabase.from('posts').update(updates).eq('id', postId).select().single()
-          : await supabase.from('posts').upsert({ ...updates, created_at: new Date().toISOString() }).select().single();
+        const { error, data: postData } = await supabase
+          .from('posts')
+          .upsert(updates)
+          .select()
+          .single();
         if (error) throw error;
         if (!postId && postData?.id) {
           window.history.replaceState(null, '', `/dashboard/editor?id=${postData.id}`);
@@ -147,12 +193,6 @@ export default function Editor({
     if (url) editorRef.current?.format('link', url);
   };
 
-  const handleImageUpload = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !editorRef.current) return;
@@ -160,51 +200,31 @@ export default function Editor({
     try {
       console.log('Editor: Uploading file:', { name: file.name, size: file.size });
 
-      if (file.size > 1048576) {
-        throw new Error('File size exceeds 1MB limit');
-      }
+      const formData = new FormData();
+      formData.append('file', file);
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `public/${fileName}`;
-
-      const arrayBuffer = await file.arrayBuffer();
-      const fileBody = new Uint8Array(arrayBuffer);
-
-      console.log('Editor: Sending to R2:', {
-        bucket: 'images',
-        key: filePath,
-        size: fileBody.length,
-        accessKey: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID ? 'Set' : 'Not set',
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
       });
 
-      const command = new PutObjectCommand({
-        Bucket: 'images',
-        Key: filePath,
-        Body: fileBody,
-        ContentType: file.type,
-      });
-
-      await r2Client.send(command);
-      console.log('Editor: File uploaded to R2 successfully');
-
-      const publicUrl = `https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com/images/${filePath}`;
-      console.log('Editor: R2 Public URL:', publicUrl);
-
-      // Test URL accessibility
-      const response = await fetch(publicUrl, { method: 'HEAD' });
       if (!response.ok) {
-        console.warn('Editor: Public URL not accessible:', response.status);
+        const { error } = await response.json();
+        throw new Error(error || 'Upload failed');
       }
 
+      const { url } = await response.json();
+      console.log('Editor: Uploaded URL:', url);
+
+      const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'audio';
       const range = editorRef.current.getSelection() || { index: editorRef.current.getLength() };
-      editorRef.current.insertEmbed(range.index, 'image', publicUrl);
+      editorRef.current.insertEmbed(range.index, type, url);
       const newContent = editorRef.current.root.innerHTML;
-      console.log('Editor: Image uploaded, new content:', newContent);
+      console.log('Editor: New content:', newContent);
       onContentChange(newContent);
     } catch (error: any) {
-      console.error('Image upload failed:', error.message || error, error);
-      alert(`Failed to upload image: ${error.message || 'Unknown error'}`);
+      console.error('Image upload failed:', error);
+      alert(`Failed to upload file: ${error.message || 'Unknown error'}`);
     } finally {
       e.target.value = '';
     }
@@ -232,38 +252,46 @@ export default function Editor({
         mb={4}
         _focus={{ outline: 'none', boxShadow: 'none' }}
         isDisabled={isLoading}
+        color="#121C27"
       />
-      <Tabs variant="soft-rounded" colorScheme="blue">
+      <Tabs variant="soft-rounded" colorScheme="yellow">
         <TabList mb={4}>
-          <Tab>Edit</Tab>
-          <Tab>Preview</Tab>
+          <Tab color="#121C27">Edit</Tab>
+          <Tab color="#121C27">Preview</Tab>
         </TabList>
         <TabPanels>
           <TabPanel p={0}>
             <Box mb={4}>
               <HStack spacing={2} mb={2}>
-                <Button size="sm" onClick={() => editorRef.current?.format('bold', true)} isDisabled={isLoading || !isEditorLoaded}>B</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('italic', true)} isDisabled={isLoading || !isEditorLoaded}>I</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('header', 1)} isDisabled={isLoading || !isEditorLoaded}>H1</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('header', 2)} isDisabled={isLoading || !isEditorLoaded}>H2</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('list', 'bullet')} isDisabled={isLoading || !isEditorLoaded}>• List</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('list', 'ordered')} isDisabled={isLoading || !isEditorLoaded}>1. List</Button>
-                <Button size="sm" onClick={handleLink} isDisabled={isLoading || !isEditorLoaded}>Link</Button>
-                <Button size="sm" onClick={handleImageUpload} isDisabled={isLoading || !isEditorLoaded}>Image</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('code', true)} isDisabled={isLoading || !isEditorLoaded}>Code</Button>
-                <Button size="sm" onClick={handleUndo} isDisabled={isLoading || !isEditorLoaded}>Undo</Button>
-                <Button size="sm" onClick={handleRedo} isDisabled={isLoading || !isEditorLoaded}>Redo</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('bold', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>B</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('italic', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>I</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('code', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Code</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('header', 1)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>H1</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('header', 2)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>H2</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('list', 'bullet')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>• List</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('list', 'ordered')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>1. List</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('align', '')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Left</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('align', 'center')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Center</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('align', 'right')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Right</Button>
+                <Button size="sm" onClick={() => editorRef.current?.format('align', 'justify')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Justify</Button>
+                <Button size="sm" onClick={handleLink} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Link</Button>
+                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Image</Button>
+                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Video</Button>
+                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Audio</Button>
+                <Button size="sm" onClick={handleUndo} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Undo</Button>
+                <Button size="sm" onClick={handleRedo} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Redo</Button>
               </HStack>
             </Box>
             <Box
               border="1px solid"
-              borderColor="gray.200"
+              borderColor="#121C27"
               borderRadius="md"
               p={4}
               bg="white"
               minH="200px"
+              color="#121C27"
               sx={{
-                '& .ql-editor': { minHeight: '200px', outline: 'none' },
+                '& .ql-editor': { minHeight: '200px', color: '#121C27' },
                 '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
                 '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
                 '& p': { mb: 2 },
@@ -278,7 +306,7 @@ export default function Editor({
                 type="file"
                 ref={fileInputRef}
                 style={{ display: 'none' }}
-                accept="image/*"
+                accept="image/*,video/mp4,audio/mpeg"
                 onChange={handleFileChange}
               />
             </Box>
@@ -287,11 +315,12 @@ export default function Editor({
             {domPurify ? (
               <Box
                 border="1px solid"
-                borderColor="gray.200"
+                borderColor="#121C27"
                 borderRadius="md"
                 p={4}
                 bg="white"
                 minH="200px"
+                color="#121C27"
                 sx={{
                   '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
                   '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
@@ -303,7 +332,7 @@ export default function Editor({
                 dangerouslySetInnerHTML={{ __html: domPurify.sanitize(content || '<p>No content yet</p>') }}
               />
             ) : (
-              <Box p={4}>Loading preview...</Box>
+              <Box p={4} color="#121C27">Loading preview...</Box>
             )}
           </TabPanel>
         </TabPanels>

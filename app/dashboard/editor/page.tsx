@@ -4,18 +4,18 @@
 import { useState, useEffect } from 'react';
 import { Box, Heading, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
-import { supabase } from '../../../lib/supabase'; // Adjust path
+import { supabase } from '../../../lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import NextLink from 'next/link';
-import Editor from '../../../components/Editor'; // Adjust path
+import Editor from '../../../components/Editor';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
 export default function EditorPage() {
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState<string>(''); // Start empty
+  const [content, setContent] = useState<string>('');
   const [published, setPublished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -23,15 +23,14 @@ export default function EditorPage() {
   const searchParams = useSearchParams();
   const postId = searchParams.get('id');
 
-  // Load draft or post only once on mount
   useEffect(() => {
-    console.log('EditorPage: Mounted, postId:', postId); // Debug
+    console.log('EditorPage: Mounted, postId:', postId);
     if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
       const savedDraft = localStorage.getItem(draftKey);
       if (savedDraft) {
         const { title: savedTitle, content: savedContent } = JSON.parse(savedDraft);
-        console.log('EditorPage: Loading draft:', { savedTitle, savedContent }); // Debug
+        console.log('EditorPage: Loading draft:', { savedTitle, savedContent });
         setTitle(savedTitle || '');
         setContent(savedContent || '');
         toast.info('Loaded unsaved draft from your last session.');
@@ -47,9 +46,9 @@ export default function EditorPage() {
 
         if (error) {
           toast.error('Error loading post');
-          console.log('EditorPage: Fetch error:', error); // Debug
+          console.log('EditorPage: Fetch error:', error);
         } else {
-          console.log('EditorPage: Post loaded:', data); // Debug
+          console.log('EditorPage: Post loaded:', data);
           setTitle(data.title || '');
           setContent(data.content || '');
           setPublished(data.published);
@@ -58,10 +57,10 @@ export default function EditorPage() {
       };
       fetchPost();
     }
-  }, [postId]); // Only runs when postId changes
+  }, [postId]);
 
   const handleTitleChange = (newTitle: string) => {
-    console.log('EditorPage: Title changed:', newTitle); // Debug
+    console.log('EditorPage: Title changed:', newTitle);
     setTitle(newTitle);
     if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
@@ -70,7 +69,7 @@ export default function EditorPage() {
   };
 
   const handleContentChange = (newContent: string) => {
-    console.log('EditorPage: Content changed:', newContent); // Debug
+    console.log('EditorPage: Content changed:', newContent);
     setContent(newContent);
     if (!postId) {
       const draftKey = 'spawnwrite-draft-new';
@@ -88,10 +87,10 @@ export default function EditorPage() {
   };
 
   const handleSave = async () => {
-    console.log('EditorPage: Saving:', { title, content, published }); // Debug
+    console.log('EditorPage: Saving:', { title, content, published });
     if (!title.trim() || !content.trim()) {
       toast.error('Title and content cannot be empty');
-      console.log('EditorPage: Validation failed, current state:', { title, content }); // Debug
+      console.log('EditorPage: Validation failed, current state:', { title, content });
       return;
     }
 
@@ -111,7 +110,7 @@ export default function EditorPage() {
 
       if (error) {
         toast.error(error.message);
-        console.log('EditorPage: Update error:', error); // Debug
+        console.log('EditorPage: Update error:', error);
       } else {
         toast.success('Post updated!');
         router.push('/dashboard');
@@ -123,7 +122,7 @@ export default function EditorPage() {
 
       if (error) {
         toast.error(error.message);
-        console.log('EditorPage: Insert error:', error); // Debug
+        console.log('EditorPage: Insert error:', error);
       } else {
         localStorage.removeItem('spawnwrite-draft-new');
         toast.success('Post saved!');
@@ -147,7 +146,7 @@ export default function EditorPage() {
   if (fetching && postId) {
     return (
       <Box minH="100vh" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
-        <Spinner size="xl" color="brand.accent" />
+        <Spinner size="xl" color="#b8c103" />
       </Box>
     );
   }
@@ -156,14 +155,14 @@ export default function EditorPage() {
     <MotionBox
       minH="100vh"
       bg="gray.100"
-      color="brand.primary"
+      color="#121C27"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
       <MotionBox
         as="nav"
-        bg="brand.primary"
+        bg="#121C27"
         color="white"
         p={4}
         position="sticky"
@@ -177,21 +176,21 @@ export default function EditorPage() {
           <Heading size="md">SpawnWrite</Heading>
           <HStack spacing={4}>
             <NextLink href="/dashboard" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Dashboard
               </MotionButton>
             </NextLink>
             <NextLink href="/dashboard/editor" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Editor
               </MotionButton>
             </NextLink>
             <NextLink href="/dashboard/settings" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Settings
               </MotionButton>
             </NextLink>
-            <MotionButton bg="transparent" color="white" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
+            <MotionButton bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
               Logout
             </MotionButton>
           </HStack>
@@ -199,7 +198,7 @@ export default function EditorPage() {
       </MotionBox>
 
       <VStack spacing={6} maxW="800px" mx="auto" py={10}>
-        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
+        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold" color="#121C27">
           {postId ? 'Edit Post' : 'New Post'}
         </Heading>
         <Editor
@@ -212,7 +211,7 @@ export default function EditorPage() {
         />
         <HStack w="full" justify="space-between">
           <FormControl display="flex" alignItems="center" w="auto">
-            <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold">
+            <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold" color="#121C27">
               Publish
             </FormLabel>
             <Switch
@@ -243,9 +242,9 @@ export default function EditorPage() {
               </MotionButton>
             )}
             <MotionButton
-              bg="brand.primary"
+              bg="#121C27"
               color="white"
-              _hover={{ bg: 'brand.accent' }}
+              _hover={{ bg: '#b8c103', color: '#121C27' }}
               onClick={handleSave}
               isLoading={loading}
               whileHover={{ scale: 1.05 }}
