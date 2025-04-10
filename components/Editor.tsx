@@ -2,10 +2,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Box, Input, HStack, Button, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react';
+import {
+  Box,
+  Input,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  Text,
+} from '@chakra-ui/react';
 import { supabase } from '../lib/supabase';
 import 'quill/dist/quill.snow.css';
 import Quill, { type Range } from 'quill';
+import { FaBold, FaItalic, FaImage, FaVideo, FaVolumeUp } from 'react-icons/fa';
 
 interface EditorProps {
   title: string;
@@ -25,30 +35,21 @@ export default function Editor({
   postId,
 }: EditorProps) {
   const [isEditorLoaded, setIsEditorLoaded] = useState(false);
-  const [domPurify, setDomPurify] = useState<any>(null);
   const quillRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Quill | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      import('dompurify').then((module) => {
-        setDomPurify(() => module.default);
-      }).catch((err) => {
-        console.error('Failed to load DOMPurify:', err);
-      });
-    }
-  }, []);
-
-  useEffect(() => {
     const loadQuill = async () => {
       try {
         const Quill = (await import('quill')).default;
-        const Parchment = Quill.import('parchment');
-        const Embed = Quill.import('blots/embed') as typeof import('quill').Parchment.Embed;
+        
+        // Get the Embed blot using Quill.import
+        const EmbedBlot = Quill.import('blots/embed');
 
-        class CustomVideo extends Embed {
+        // Define custom blots for video and audio
+        class CustomVideo extends EmbedBlot {
           static create(value: string) {
             const node = super.create(value);
             node.setAttribute('src', value);
@@ -62,11 +63,10 @@ export default function Editor({
 
           static blotName = 'video';
           static tagName = 'video';
-          static scope = Parchment.Scope.BLOCK;
         }
         Quill.register('blots/video', CustomVideo, true);
 
-        class CustomAudio extends Embed {
+        class CustomAudio extends EmbedBlot {
           static create(value: string) {
             const node = super.create(value);
             node.setAttribute('src', value);
@@ -80,7 +80,6 @@ export default function Editor({
 
           static blotName = 'audio';
           static tagName = 'audio';
-          static scope = Parchment.Scope.BLOCK;
         }
         Quill.register('blots/audio', CustomAudio, true);
 
@@ -90,25 +89,18 @@ export default function Editor({
             modules: {
               toolbar: {
                 container: [
-                  ['bold', 'italic', 'code'],
-                  [{ header: 1 }, { header: 2 }],
+                  [{ header: [1, 2, false] }],
+                  ['bold', 'italic'],
                   [{ list: 'ordered' }, { list: 'bullet' }],
-                  [{ align: '' }, { align: 'center' }, { align: 'right' }, { align: 'justify' }],
+                  [{ align: [] }],
                   ['link', 'image', 'video', 'audio'],
-                  ['undo', 'redo'],
                 ],
                 handlers: {
                   image: () => fileInputRef.current?.click(),
                   video: () => fileInputRef.current?.click(),
                   audio: () => fileInputRef.current?.click(),
-                  undo: handleUndo,
-                  redo: handleRedo,
                   link: handleLink,
                 },
-              },
-              history: {
-                delay: 1000,
-                maxStack: 100,
               },
             },
             placeholder: 'Start writing here...',
@@ -140,6 +132,7 @@ export default function Editor({
         }
       } catch (error) {
         console.error('Failed to load Quill editor:', error);
+        setIsEditorLoaded(false); // Ensure loading state is reset on error
       }
     };
 
@@ -169,6 +162,7 @@ export default function Editor({
           content: data.content,
           user_id: user.id,
           updated_at: new Date().toISOString(),
+          published: false,
           ...(postId ? {} : { created_at: new Date().toISOString() }),
         };
         const { error, data: postData } = await supabase
@@ -186,8 +180,6 @@ export default function Editor({
     }, 2000);
   };
 
-  const handleUndo = () => editorRef.current?.history.undo();
-  const handleRedo = () => editorRef.current?.history.redo();
   const handleLink = () => {
     const url = prompt('Enter URL');
     if (url) editorRef.current?.format('link', url);
@@ -223,7 +215,7 @@ export default function Editor({
       console.log('Editor: New content:', newContent);
       onContentChange(newContent);
     } catch (error: any) {
-      console.error('Image upload failed:', error);
+      console.error('Media upload failed:', error);
       alert(`Failed to upload file: ${error.message || 'Unknown error'}`);
     } finally {
       e.target.value = '';
@@ -240,7 +232,8 @@ export default function Editor({
   };
 
   return (
-    <Box w="full">
+    <Box w="full" p={4}>
+      {/* Title */}
       <Input
         value={title}
         onChange={handleTitleChange}
@@ -254,53 +247,34 @@ export default function Editor({
         isDisabled={isLoading}
         color="#121C27"
       />
-      <Tabs variant="soft-rounded" colorScheme="yellow">
-        <TabList mb={4}>
-          <Tab color="#121C27">Edit</Tab>
-          <Tab color="#121C27">Preview</Tab>
+
+      {/* Tabs for Edit and Preview */}
+      <Tabs variant="enclosed">
+        <TabList>
+          <Tab>Edit</Tab>
+          <Tab>Preview</Tab>
         </TabList>
+
         <TabPanels>
-          <TabPanel p={0}>
-            <Box mb={4}>
-              <HStack spacing={2} mb={2}>
-                <Button size="sm" onClick={() => editorRef.current?.format('bold', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>B</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('italic', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>I</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('code', true)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Code</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('header', 1)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>H1</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('header', 2)} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>H2</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('list', 'bullet')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>• List</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('list', 'ordered')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>1. List</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('align', '')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Left</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('align', 'center')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Center</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('align', 'right')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Right</Button>
-                <Button size="sm" onClick={() => editorRef.current?.format('align', 'justify')} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Justify</Button>
-                <Button size="sm" onClick={handleLink} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Link</Button>
-                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Image</Button>
-                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Video</Button>
-                <Button size="sm" onClick={() => fileInputRef.current?.click()} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Audio</Button>
-                <Button size="sm" onClick={handleUndo} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Undo</Button>
-                <Button size="sm" onClick={handleRedo} isDisabled={isLoading || !isEditorLoaded} bg="#121C27" color="#b8c103" _hover={{ bg: '#b8c103', color: '#121C27' }}>Redo</Button>
-              </HStack>
-            </Box>
+          {/* Edit Tab */}
+          <TabPanel>
             <Box
               border="1px solid"
-              borderColor="#121C27"
+              borderColor="gray.200"
               borderRadius="md"
               p={4}
-              bg="white"
-              minH="200px"
+              minH="300px"
               color="#121C27"
               sx={{
-                '& .ql-editor': { minHeight: '200px', color: '#121C27' },
+                '& .ql-editor': { minHeight: '300px', color: '#121C27' },
+                '& .ql-placeholder': { color: 'gray.500' },
                 '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
                 '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
                 '& p': { mb: 2 },
                 '& ul, & ol': { pl: 6, mb: 2 },
-                '& blockquote': { borderLeft: '4px solid', borderColor: 'gray.300', pl: 4, color: 'gray.600', mb: 2 },
-                '& code': { bg: 'gray.100', p: 2, borderRadius: 'md', display: 'block', overflowX: 'auto', mb: 2 },
               }}
             >
-              {!isEditorLoaded && <p>Loading editor...</p>}
+              {!isEditorLoaded && <Text>Loading editor...</Text>}
               <div ref={quillRef} />
               <input
                 type="file"
@@ -311,29 +285,22 @@ export default function Editor({
               />
             </Box>
           </TabPanel>
-          <TabPanel p={0}>
-            {domPurify ? (
-              <Box
-                border="1px solid"
-                borderColor="#121C27"
-                borderRadius="md"
-                p={4}
-                bg="white"
-                minH="200px"
-                color="#121C27"
-                sx={{
-                  '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
-                  '& h2': { fontSize: 'xl', fontWeight: 'bold', mb: 2 },
-                  '& p': { mb: 2 },
-                  '& ul, & ol': { pl: 6, mb: 2 },
-                  '& blockquote': { borderLeft: '4px solid', borderColor: 'gray.300', pl: 4, color: 'gray.600', mb: 2 },
-                  '& code': { bg: 'gray.100', p: 2, borderRadius: 'md', display: 'block', overflowX: 'auto', mb: 2 },
-                }}
-                dangerouslySetInnerHTML={{ __html: domPurify.sanitize(content || '<p>No content yet</p>') }}
-              />
-            ) : (
-              <Box p={4} color="#121C27">Loading preview...</Box>
-            )}
+
+          {/* Preview Tab */}
+          <TabPanel>
+            <Box
+              border="1px solid"
+              borderColor="gray.200"
+              borderRadius="md"
+              p={4}
+              minH="300px"
+              color="#121C27"
+            >
+              <Text fontSize="2xl" fontWeight="bold" mb={4}>
+                {title || 'Untitled'}
+              </Text>
+              <Box dangerouslySetInnerHTML={{ __html: content }} />
+            </Box>
           </TabPanel>
         </TabPanels>
       </Tabs>
