@@ -4,16 +4,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Input, HStack, Button, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { supabase } from '../lib/supabase'; // Add this back (adjust path as needed)
+import { supabase } from '../lib/supabase'; // Adjust path
 import 'quill/dist/quill.snow.css';
 
-// Configure R2 client with your endpoint
+// Configure R2 client
 const r2Client = new S3Client({
   region: 'auto',
   endpoint: 'https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com',
   credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID || 'YOUR_ACCESS_KEY',
-    secretAccessKey: process.env.NEXT_PUBLIC_R2_SECRET_ACCESS_KEY || 'YOUR_SECRET_KEY',
+    accessKeyId: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.NEXT_PUBLIC_R2_SECRET_ACCESS_KEY || '',
   },
 });
 
@@ -160,7 +160,6 @@ export default function Editor({
     try {
       console.log('Editor: Uploading file:', { name: file.name, size: file.size });
 
-      // Enforce 1MB limit (1MB = 1,048,576 bytes)
       if (file.size > 1048576) {
         throw new Error('File size exceeds 1MB limit');
       }
@@ -169,9 +168,15 @@ export default function Editor({
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `public/${fileName}`;
 
-      // Convert File to Uint8Array for AWS SDK
       const arrayBuffer = await file.arrayBuffer();
       const fileBody = new Uint8Array(arrayBuffer);
+
+      console.log('Editor: Sending to R2:', {
+        bucket: 'images',
+        key: filePath,
+        size: fileBody.length,
+        accessKey: process.env.NEXT_PUBLIC_R2_ACCESS_KEY_ID ? 'Set' : 'Not set',
+      });
 
       const command = new PutObjectCommand({
         Bucket: 'images',
@@ -183,9 +188,14 @@ export default function Editor({
       await r2Client.send(command);
       console.log('Editor: File uploaded to R2 successfully');
 
-      // Construct public URL using your endpoint
       const publicUrl = `https://f1a6a03bc9025589fe68d1b9d7d3c1f6.r2.cloudflarestorage.com/images/${filePath}`;
       console.log('Editor: R2 Public URL:', publicUrl);
+
+      // Test URL accessibility
+      const response = await fetch(publicUrl, { method: 'HEAD' });
+      if (!response.ok) {
+        console.warn('Editor: Public URL not accessible:', response.status);
+      }
 
       const range = editorRef.current.getSelection() || { index: editorRef.current.getLength() };
       editorRef.current.insertEmbed(range.index, 'image', publicUrl);
@@ -193,7 +203,7 @@ export default function Editor({
       console.log('Editor: Image uploaded, new content:', newContent);
       onContentChange(newContent);
     } catch (error: any) {
-      console.error('Image upload failed:', error.message || error);
+      console.error('Image upload failed:', error.message || error, error);
       alert(`Failed to upload image: ${error.message || 'Unknown error'}`);
     } finally {
       e.target.value = '';
