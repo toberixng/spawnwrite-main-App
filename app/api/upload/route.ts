@@ -1,7 +1,6 @@
 // app/api/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createMuxClient } from '@mux/mux-node';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,20 +12,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Initialize Mux client
-const muxTokenId = process.env.MUX_TOKEN_ID;
-const muxTokenSecret = process.env.MUX_TOKEN_SECRET;
-
-if (!muxTokenId || !muxTokenSecret) {
-  console.error('Missing Mux environment variables');
-  throw new Error('Missing Mux environment variables');
-}
-
-const mux = createMuxClient({
-  tokenId: muxTokenId,
-  tokenSecret: muxTokenSecret,
-});
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,64 +40,37 @@ export async function POST(req: NextRequest) {
     const fileName = `${Date.now()}.${fileExt}`;
     const fileBody = Buffer.from(await file.arrayBuffer());
 
-    if (file.type.startsWith('image')) {
-      // Upload image to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('media')
-        .upload(`images/${fileName}`, fileBody, {
-          contentType: file.type,
-        });
+    // Determine the folder based on file type
+    const folder = file.type.startsWith('image')
+      ? 'images'
+      : file.type.startsWith('video')
+      ? 'videos'
+      : 'audio';
 
-      if (error) {
-        console.error('Supabase upload error:', error);
-        return NextResponse.json(
-          { error: `Supabase upload failed: ${error.message}` },
-          { status: 500 }
-        );
-      }
+    console.log(`Uploading file to bucket 'media', folder '${folder}', filename '${fileName}'`);
 
-      const { data: publicUrlData } = supabase.storage
-        .from('media')
-        .getPublicUrl(`images/${fileName}`);
-
-      return NextResponse.json({ url: publicUrlData.publicUrl });
-    } else {
-      // Upload video or audio to Mux
-      const upload = await mux.video.uploads.create({
-        cors_origin: '*',
-        new_asset_settings: { playback_policy: ['public'] },
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('media')
+      .upload(`${folder}/${fileName}`, fileBody, {
+        contentType: file.type,
       });
 
-      // Upload the file to Mux's direct upload URL
-      const response = await fetch(upload.url, {
-        method: 'PUT',
-        body: fileBody,
-        headers: { 'Content-Type': file.type },
-      });
-
-      if (!response.ok) {
-        console.error('Mux upload response:', response.status, response.statusText);
-        return NextResponse.json(
-          { error: `Failed to upload to Mux: ${response.statusText}` },
-          { status: 500 }
-        );
-      }
-
-      // Wait for the asset to be created (simplified; in production, use webhooks)
-      const asset = await mux.video.assets.retrieve(upload.asset_id);
-      const playbackId = asset.playback_ids?.[0]?.id;
-      const playbackUrl = playbackId ? `https://stream.mux.com/${playbackId}.m3u8` : null;
-
-      if (!playbackUrl) {
-        console.error('Mux playback URL generation failed:', asset);
-        return NextResponse.json(
-          { error: 'Failed to generate playback URL' },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json({ url: playbackUrl });
+    if (error) {
+      console.error('Supabase upload error:', error);
+      return NextResponse.json(
+        { error: `Supabase upload failed: ${error.message}` },
+        { status: 500 }
+      );
     }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('media')
+      .getPublicUrl(`${folder}/${fileName}`);
+
+    console.log('File uploaded successfully, public URL:', publicUrlData.publicUrl);
+
+    return NextResponse.json({ url: publicUrlData.publicUrl });
   } catch (error: any) {
     console.error('Upload route error:', error);
     return NextResponse.json(

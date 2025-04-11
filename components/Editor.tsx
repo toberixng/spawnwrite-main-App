@@ -35,12 +35,8 @@ export default function Editor({
   postId,
 }: EditorProps) {
   const [isEditorLoaded, setIsEditorLoaded] = useState(false);
-  const [isToolbarFloating, setIsToolbarFloating] = useState(false);
   const quillRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Quill | null>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const editorContainerRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -48,8 +44,11 @@ export default function Editor({
       try {
         const Quill = (await import('quill')).default;
 
-        // Get the Embed blot using Quill.import
-        const EmbedBlot = Quill.import('blots/embed');
+        // Define the type for EmbedBlot as a constructor function
+        type EmbedBlotConstructor = new (...args: any[]) => any;
+
+        // Get the Embed blot using Quill.import and assert its type
+        const EmbedBlot = Quill.import('blots/embed') as EmbedBlotConstructor;
 
         // Define custom blots for video and audio
         class CustomVideo extends EmbedBlot {
@@ -116,13 +115,22 @@ export default function Editor({
             onContentChange(initialHtml);
           }
 
+          // Handle text changes
           editorRef.current.on('text-change', () => {
-            const html = editorRef.current?.root.innerHTML || '';
-            console.log('Captured content:', html); // Debug log
-            onContentChange(html);
-            if (title.trim() && html.trim()) {
-              debounceSave({ title, content: html });
-            }
+            setTimeout(() => {
+              const html = editorRef.current?.root.innerHTML || '';
+              console.log('Captured content:', html);
+              onContentChange(html);
+            }, 0);
+          });
+
+          // Explicitly handle paste events to ensure content updates
+          editorRef.current.root.addEventListener('paste', () => {
+            setTimeout(() => {
+              const html = editorRef.current?.root.innerHTML || '';
+              console.log('Content after paste:', html);
+              onContentChange(html);
+            }, 0);
           });
 
           editorRef.current.on('selection-change', (range: Range | null) => {
@@ -142,75 +150,13 @@ export default function Editor({
 
     loadQuill();
 
-    // Handle scroll for floating toolbar
-    const handleScroll = () => {
-      if (!toolbarRef.current || !editorContainerRef.current) return;
-
-      const toolbarRect = toolbarRef.current.getBoundingClientRect();
-      const editorRect = editorContainerRef.current.getBoundingClientRect();
-      const scrollTop = window.scrollY || document.documentElement.scrollTop;
-
-      // Check if the toolbar is about to be hidden (i.e., its top is above the viewport)
-      const isToolbarOutOfView = toolbarRect.top < 0;
-      const editorTop = editorRect.top + scrollTop; // Absolute position of editor's top
-
-      if (isToolbarOutOfView) {
-        setIsToolbarFloating(true);
-      } else {
-        setIsToolbarFloating(false);
-      }
-
-      // When floating, position the toolbar just above the editor's top edge
-      if (isToolbarFloating) {
-        toolbarRef.current.style.top = `${Math.max(10, editorTop - toolbarRect.height)}px`;
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-
     return () => {
       if (editorRef.current) {
         editorRef.current.off('text-change');
         editorRef.current.off('selection-change');
       }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      window.removeEventListener('scroll', handleScroll);
     };
-  }, [onContentChange, title, isToolbarFloating]);
-
-  const debounceSave = (data: { title: string; content: string }) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const updates = {
-          title: data.title,
-          content: data.content,
-          user_id: user.id,
-          updated_at: new Date().toISOString(),
-          published: false,
-          ...(postId ? {} : { created_at: new Date().toISOString() }),
-        };
-        const { error, data: postData } = await supabase
-          .from('posts')
-          .upsert(updates)
-          .select()
-          .single();
-        if (error) throw error;
-        console.log('Saved to Supabase:', postData); // Debug log
-        if (!postId && postData?.id) {
-          window.history.replaceState(null, '', `/dashboard/editor?id=${postData.id}`);
-        }
-      } catch (error) {
-        console.error('Autosave failed:', error);
-      }
-    }, 2000);
-  };
+  }, [onContentChange, title]);
 
   const handleLink = () => {
     const url = prompt('Enter URL');
@@ -258,10 +204,6 @@ export default function Editor({
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTitle = e.target.value;
     onTitleChange(newTitle);
-    const currentContent = editorRef.current?.root.innerHTML || content;
-    if (newTitle.trim() && currentContent.trim()) {
-      debounceSave({ title: newTitle, content: currentContent });
-    }
   };
 
   return (
@@ -292,7 +234,6 @@ export default function Editor({
           {/* Edit Tab */}
           <TabPanel>
             <Box
-              ref={editorContainerRef}
               position="relative"
               border="1px solid"
               borderColor="gray.200"
@@ -302,25 +243,12 @@ export default function Editor({
               color="#121C27"
               sx={{
                 '& .ql-toolbar': {
-                  position: isToolbarFloating ? 'fixed' : 'relative',
-                  left: isToolbarFloating ? '10px' : 'auto',
-                  display: 'flex',
-                  flexDirection: isToolbarFloating ? 'column' : 'row',
                   background: 'white',
                   border: '1px solid',
                   borderColor: 'gray.200',
                   borderRadius: 'md',
                   padding: '8px',
                   zIndex: 10,
-                  transition: 'all 0.3s ease-in-out',
-                },
-                '& .ql-toolbar .ql-formats': {
-                  display: 'flex',
-                  flexDirection: isToolbarFloating ? 'column' : 'row',
-                  margin: '0',
-                },
-                '& .ql-toolbar .ql-formats button': {
-                  margin: isToolbarFloating ? '4px 0' : '0 4px',
                 },
                 '& .ql-editor': { minHeight: '300px', color: '#121C27' },
                 '& .ql-placeholder': { color: 'gray.500' },

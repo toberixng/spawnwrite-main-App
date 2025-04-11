@@ -15,7 +15,6 @@
     "@chakra-ui/react": "^2.8.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
-    "@mux/mux-node": "^11.0.1",
     "@supabase/supabase-js": "^2.49.4",
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.2.5",
