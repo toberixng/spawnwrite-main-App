@@ -2,74 +2,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Box, Heading, Input, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
+import { Box, Heading, VStack, Button, HStack, Switch, FormControl, FormLabel, Spinner } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../../lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import NextLink from 'next/link';
-import { LexicalComposer } from '@lexical/react/LexicalComposer';
-import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
-import { ContentEditable } from '@lexical/react/LexicalContentEditable';
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
-import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { $getRoot, EditorState } from 'lexical';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import Editor from '../../../components/Editor';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
 
-// Define the ErrorBoundary adapter function
-function LexicalErrorBoundary({ children }: { children: React.ReactNode }) {
-  return (
-    <CustomErrorBoundary onError={(error) => console.error(error)}>
-      {children as React.ReactElement}
-    </CustomErrorBoundary>
-  );
-}
-
-// Define props interface for CustomErrorBoundary
-interface ErrorBoundaryProps {
-  children: React.ReactElement;
-  onError?: (error: Error) => void;
-}
-
-// Custom Error Boundary Component
-class CustomErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Lexical Error:', error, errorInfo);
-    if (this.props.onError) {
-      this.props.onError(error);
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <Box color="red.500">Something went wrong in the editor.</Box>;
-    }
-    return this.props.children;
-  }
-}
-
-const lexicalConfig = {
-  namespace: 'SpawnWriteEditor',
-  onError: (error: Error) => console.error(error),
-  theme: {
-    paragraph: 'editor-paragraph',
-    text: {
-      bold: 'editor-bold',
-      italic: 'editor-italic',
-    },
-  },
-};
-
-export default function Editor() {
+export default function EditorPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState<string>('');
   const [published, setPublished] = useState(false);
@@ -80,7 +24,18 @@ export default function Editor() {
   const postId = searchParams.get('id');
 
   useEffect(() => {
-    if (postId) {
+    console.log('EditorPage: Mounted, postId:', postId);
+    if (!postId) {
+      const draftKey = 'spawnwrite-draft-new';
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        const { title: savedTitle, content: savedContent } = JSON.parse(savedDraft);
+        console.log('EditorPage: Loading draft:', { savedTitle, savedContent });
+        setTitle(savedTitle || '');
+        setContent(savedContent || '');
+        toast.info('Loaded unsaved draft from your last session.');
+      }
+    } else {
       const fetchPost = async () => {
         setFetching(true);
         const { data, error } = await supabase
@@ -91,8 +46,10 @@ export default function Editor() {
 
         if (error) {
           toast.error('Error loading post');
+          console.log('EditorPage: Fetch error:', error);
         } else {
-          setTitle(data.title);
+          console.log('EditorPage: Post loaded:', data);
+          setTitle(data.title || '');
           setContent(data.content || '');
           setPublished(data.published);
         }
@@ -102,16 +59,38 @@ export default function Editor() {
     }
   }, [postId]);
 
-  const handleContentChange = (editorState: EditorState) => {
-    editorState.read(() => {
-      const root = $getRoot();
-      setContent(root.getTextContent());
-    });
+  const handleTitleChange = (newTitle: string) => {
+    console.log('EditorPage: Title changed:', newTitle);
+    setTitle(newTitle);
+    if (!postId) {
+      const draftKey = 'spawnwrite-draft-new';
+      localStorage.setItem(draftKey, JSON.stringify({ title: newTitle, content }));
+    }
+  };
+
+  const handleContentChange = (newContent: string) => {
+    console.log('EditorPage: Content changed:', newContent);
+    setContent(newContent);
+    if (!postId) {
+      const draftKey = 'spawnwrite-draft-new';
+      localStorage.setItem(draftKey, JSON.stringify({ title, content: newContent }));
+    }
+  };
+
+  const handleClearDraft = () => {
+    if (!postId) {
+      localStorage.removeItem('spawnwrite-draft-new');
+      setTitle('');
+      setContent('');
+      toast.success('Draft cleared.');
+    }
   };
 
   const handleSave = async () => {
+    console.log('EditorPage: Saving:', { title, content, published });
     if (!title.trim() || !content.trim()) {
       toast.error('Title and content cannot be empty');
+      console.log('EditorPage: Validation failed, current state:', { title, content });
       return;
     }
 
@@ -131,6 +110,7 @@ export default function Editor() {
 
       if (error) {
         toast.error(error.message);
+        console.log('EditorPage: Update error:', error);
       } else {
         toast.success('Post updated!');
         router.push('/dashboard');
@@ -142,7 +122,9 @@ export default function Editor() {
 
       if (error) {
         toast.error(error.message);
+        console.log('EditorPage: Insert error:', error);
       } else {
+        localStorage.removeItem('spawnwrite-draft-new');
         toast.success('Post saved!');
         router.push('/dashboard');
       }
@@ -157,13 +139,14 @@ export default function Editor() {
     } else {
       toast.success('Logged out successfully!');
       router.push('/auth/login');
+      router.refresh();
     }
   };
 
   if (fetching && postId) {
     return (
       <Box minH="100vh" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
-        <Spinner size="xl" color="brand.accent" />
+        <Spinner size="xl" color="#b8c103" />
       </Box>
     );
   }
@@ -172,14 +155,14 @@ export default function Editor() {
     <MotionBox
       minH="100vh"
       bg="gray.100"
-      color="brand.primary"
+      color="#121C27"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
       <MotionBox
         as="nav"
-        bg="brand.primary"
+        bg="#121C27"
         color="white"
         p={4}
         position="sticky"
@@ -193,16 +176,21 @@ export default function Editor() {
           <Heading size="md">SpawnWrite</Heading>
           <HStack spacing={4}>
             <NextLink href="/dashboard" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Dashboard
               </MotionButton>
             </NextLink>
             <NextLink href="/dashboard/editor" passHref legacyBehavior>
-              <MotionButton as="a" bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
                 Editor
               </MotionButton>
             </NextLink>
-            <MotionButton bg="transparent" _hover={{ color: 'brand.accent' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
+            <NextLink href="/dashboard/settings" passHref legacyBehavior>
+              <MotionButton as="a" bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }}>
+                Settings
+              </MotionButton>
+            </NextLink>
+            <MotionButton bg="transparent" color="white" _hover={{ color: '#b8c103' }} whileHover={{ scale: 1.05 }} transition={{ duration: 0.2 }} onClick={handleLogout}>
               Logout
             </MotionButton>
           </HStack>
@@ -210,36 +198,20 @@ export default function Editor() {
       </MotionBox>
 
       <VStack spacing={6} maxW="800px" mx="auto" py={10}>
-        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold">
+        <Heading fontSize={{ base: '3xl', md: '4xl' }} fontWeight="extrabold" color="#121C27">
           {postId ? 'Edit Post' : 'New Post'}
         </Heading>
-        <Input
-          placeholder="Post Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          bg="white"
-          borderColor="gray.300"
-          _focus={{ borderColor: 'brand.accent', boxShadow: '0 0 0 1px #b8c103' }}
-          color="brand.primary"
-          fontSize="lg"
-          p={6}
-          borderRadius="lg"
-          boxShadow="sm"
+        <Editor
+          title={title}
+          content={content}
+          onTitleChange={handleTitleChange}
+          onContentChange={handleContentChange}
+          isLoading={loading}
+          postId={postId || undefined}
         />
-        <Box w="full" bg="white" borderRadius="lg" p={4} boxShadow="sm" minH="400px">
-          <LexicalComposer initialConfig={lexicalConfig}>
-            <RichTextPlugin
-              contentEditable={<ContentEditable style={{ minHeight: '350px', padding: '8px', outline: 'none' }} />}
-              placeholder={<Box color="gray.500" p={2}>Write your post here...</Box>}
-              ErrorBoundary={LexicalErrorBoundary}
-            />
-            <HistoryPlugin />
-            <OnChangePlugin onChange={handleContentChange} />
-          </LexicalComposer>
-        </Box>
         <HStack w="full" justify="space-between">
           <FormControl display="flex" alignItems="center" w="auto">
-            <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold">
+            <FormLabel htmlFor="publish-toggle" mb="0" fontWeight="bold" color="#121C27">
               Publish
             </FormLabel>
             <Switch
@@ -249,23 +221,44 @@ export default function Editor() {
               colorScheme="yellow"
             />
           </FormControl>
-          <MotionButton
-            bg="brand.primary"
-            color="white"
-            _hover={{ bg: 'brand.accent' }}
-            onClick={handleSave}
-            isLoading={loading}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            px={6}
-            py={3}
-            borderRadius="lg"
-            boxShadow="md"
-            fontWeight="bold"
-          >
-            Save Post
-          </MotionButton>
+          <HStack spacing={4}>
+            {!postId && (
+              <MotionButton
+                bg="gray.500"
+                color="white"
+                _hover={{ bg: 'gray.600' }}
+                onClick={handleClearDraft}
+                isLoading={loading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                px={6}
+                py={3}
+                borderRadius="lg"
+                boxShadow="md"
+                fontWeight="bold"
+              >
+                Clear Draft
+              </MotionButton>
+            )}
+            <MotionButton
+              bg="#121C27"
+              color="white"
+              _hover={{ bg: '#b8c103', color: '#121C27' }}
+              onClick={handleSave}
+              isLoading={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              px={6}
+              py={3}
+              borderRadius="lg"
+              boxShadow="md"
+              fontWeight="bold"
+            >
+              Save Post
+            </MotionButton>
+          </HStack>
         </HStack>
       </VStack>
     </MotionBox>

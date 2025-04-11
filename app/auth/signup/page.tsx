@@ -12,8 +12,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
+import OAuthButton from '../../../features/auth/OAuthButton';
 
-// Password schema and common passwords
 const passwordSchema = z.string().min(8).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/, 'Password must have 1 upper, 1 lower, 1 number, 1 special character');
 const commonPasswords = ['password123', 'admin123', 'welcome1'];
 
@@ -54,18 +54,24 @@ export default function Signup() {
     return strength;
   };
 
+  const generateDefaultHandle = () => {
+    const randomString = Math.random().toString(36).substring(2, 8);
+    return `user_${randomString}`;
+  };
+
   const handleSignup = async () => {
     if (!validateForm()) return;
-    
+
     setLoading(true);
-    setUserExists(false); // Reset before signup
-    
+    setUserExists(false);
+    const defaultHandle = generateDefaultHandle();
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { 
-          data: { first_name: firstName, last_name: lastName },
+          data: { first_name: firstName, last_name: lastName, handle: defaultHandle },
           emailRedirectTo: 'http://localhost:3000/dashboard',
         },
       });
@@ -90,6 +96,7 @@ export default function Signup() {
         } else {
           toast.success('Check your email to confirm your account!');
           router.push('/dashboard');
+          router.refresh(); // Force refresh to sync session
         }
       } else {
         toast.error('Unexpected response from server. Please try again.');
@@ -109,10 +116,9 @@ export default function Signup() {
     setLoading(true);
     
     try {
-      // Attempt signup first to check existence
       const { data, error: signupError } = await supabase.auth.signUp({
         email,
-        password: 'temp-password-check', // Dummy password, won’t be used
+        password: 'temp-password-check',
         options: { emailRedirectTo: 'http://localhost:3000/dashboard' },
       });
       
@@ -123,7 +129,6 @@ export default function Signup() {
       }
       
       if (data.user && data.user.identities && data.user.identities.length === 0) {
-        // User exists, send magic link
         const { error } = await supabase.auth.signInWithOtp({ 
           email,
           options: { emailRedirectTo: 'http://localhost:3000/dashboard' },
@@ -319,6 +324,7 @@ export default function Signup() {
                     Send Magic Link
                   </Button>
                 </motion.div>
+                <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} />
               </>
             )}
             

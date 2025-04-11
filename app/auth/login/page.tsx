@@ -1,7 +1,7 @@
 // app/auth/login/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Button, FormControl, FormLabel, Input, Heading, Text, Link, InputGroup, InputRightElement, IconButton,
 } from '@chakra-ui/react';
@@ -10,6 +10,7 @@ import { supabase } from '../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import OAuthButton from '../../../features/auth/OAuthButton';
 
 const MotionBox = motion(Box);
 const MotionButton = motion(Button);
@@ -22,6 +23,16 @@ export default function Login() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const router = useRouter();
 
+  useEffect(() => {
+    // Check if a user is already logged in and redirect
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        router.push('/dashboard');
+        router.refresh();
+      }
+    });
+  }, [router]);
+
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
     if (!email) newErrors.email = 'Email is required';
@@ -33,20 +44,19 @@ export default function Login() {
   const handleLogin = async () => {
     if (!validateForm()) return;
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay to slow brute force
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error(error.message);
     } else {
       toast.success('Logged in successfully!');
       router.push('/dashboard');
+      router.refresh(); // Force refresh to sync session
     }
   };
 
   const handleMagicLink = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.signInWithOtp({ email });
     setLoading(false);
     if (error) toast.error(error.message);
@@ -59,9 +69,8 @@ export default function Login() {
       return;
     }
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'http://localhost:3000/auth/reset-password', // Adjust for production URL
+      redirectTo: 'http://localhost:3000/auth/reset-password',
     });
     setLoading(false);
     if (error) toast.error(error.message);
@@ -163,6 +172,7 @@ export default function Login() {
         >
           Send Magic Link
         </MotionButton>
+        <OAuthButton provider="google" isLoading={loading} setLoading={setLoading} />
         <Text fontSize="sm">
           Don’t have an account? <Link href="/auth/signup" color="brand.accent">Sign Up</Link>
         </Text>

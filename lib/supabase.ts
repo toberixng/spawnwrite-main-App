@@ -1,13 +1,17 @@
 // lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://rpjoaivnzwhfdfvyuwup.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwam9haXZuendoZmRmdnl1d3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NjE0MDQsImV4cCI6MjA1OTQzNzQwNH0.t1NPOcc8IH85agVtn-EDwIkF6uyKS3wzKebx02m4sR4';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Only log in development
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables');
+  throw new Error('Missing Supabase environment variables');
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true, // Ensure session persistence
+    persistSession: true,
   },
 });
 

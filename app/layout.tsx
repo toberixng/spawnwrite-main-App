@@ -1,21 +1,9 @@
 // app/layout.tsx
 'use client';
 
-import { ChakraProvider, extendTheme } from '@chakra-ui/react';
+import { ChakraProvider } from '@chakra-ui/react';
 import { Toaster } from 'sonner';
-
-const theme = extendTheme({
-  initialColorMode: 'light',
-  useSystemColorMode: false,
-  colors: {
-    brand: {
-      primary: '#121C27',
-      accent: '#b8c103',
-      light: '#CEEAF7',
-      neutral: '#FAFAFA',
-    },
-  },
-});
+import theme from './theme'; // Import the consolidated theme
 
 export default function RootLayout({
   children,
