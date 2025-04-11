@@ -35,8 +35,11 @@ export default function Editor({
   postId,
 }: EditorProps) {
   const [isEditorLoaded, setIsEditorLoaded] = useState(false);
+  const [isToolbarFloating, setIsToolbarFloating] = useState(false);
   const quillRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Quill | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +47,7 @@ export default function Editor({
     const loadQuill = async () => {
       try {
         const Quill = (await import('quill')).default;
-        
+
         // Get the Embed blot using Quill.import
         const EmbedBlot = Quill.import('blots/embed');
 
@@ -115,6 +118,7 @@ export default function Editor({
 
           editorRef.current.on('text-change', () => {
             const html = editorRef.current?.root.innerHTML || '';
+            console.log('Captured content:', html); // Debug log
             onContentChange(html);
             if (title.trim() && html.trim()) {
               debounceSave({ title, content: html });
@@ -132,11 +136,37 @@ export default function Editor({
         }
       } catch (error) {
         console.error('Failed to load Quill editor:', error);
-        setIsEditorLoaded(false); // Ensure loading state is reset on error
+        setIsEditorLoaded(false);
       }
     };
 
     loadQuill();
+
+    // Handle scroll for floating toolbar
+    const handleScroll = () => {
+      if (!toolbarRef.current || !editorContainerRef.current) return;
+
+      const toolbarRect = toolbarRef.current.getBoundingClientRect();
+      const editorRect = editorContainerRef.current.getBoundingClientRect();
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+
+      // Check if the toolbar is about to be hidden (i.e., its top is above the viewport)
+      const isToolbarOutOfView = toolbarRect.top < 0;
+      const editorTop = editorRect.top + scrollTop; // Absolute position of editor's top
+
+      if (isToolbarOutOfView) {
+        setIsToolbarFloating(true);
+      } else {
+        setIsToolbarFloating(false);
+      }
+
+      // When floating, position the toolbar just above the editor's top edge
+      if (isToolbarFloating) {
+        toolbarRef.current.style.top = `${Math.max(10, editorTop - toolbarRect.height)}px`;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
 
     return () => {
       if (editorRef.current) {
@@ -146,8 +176,9 @@ export default function Editor({
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      window.removeEventListener('scroll', handleScroll);
     };
-  }, [onContentChange, title]);
+  }, [onContentChange, title, isToolbarFloating]);
 
   const debounceSave = (data: { title: string; content: string }) => {
     if (timeoutRef.current) {
@@ -171,6 +202,7 @@ export default function Editor({
           .select()
           .single();
         if (error) throw error;
+        console.log('Saved to Supabase:', postData); // Debug log
         if (!postId && postData?.id) {
           window.history.replaceState(null, '', `/dashboard/editor?id=${postData.id}`);
         }
@@ -201,18 +233,19 @@ export default function Editor({
       });
 
       if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error || 'Upload failed');
+        const text = await response.text();
+        console.error('Upload response:', text);
+        throw new Error(`Upload failed with status ${response.status}: ${text}`);
       }
 
-      const { url } = await response.json();
-      console.log('Editor: Uploaded URL:', url);
+      const data = await response.json();
+      console.log('Editor: Uploaded URL:', data.url);
 
       const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'audio';
       const range = editorRef.current.getSelection() || { index: editorRef.current.getLength() };
-      editorRef.current.insertEmbed(range.index, type, url);
+      editorRef.current.insertEmbed(range.index, type, data.url);
       const newContent = editorRef.current.root.innerHTML;
-      console.log('Editor: New content:', newContent);
+      console.log('Editor: New content after upload:', newContent);
       onContentChange(newContent);
     } catch (error: any) {
       console.error('Media upload failed:', error);
@@ -259,6 +292,8 @@ export default function Editor({
           {/* Edit Tab */}
           <TabPanel>
             <Box
+              ref={editorContainerRef}
+              position="relative"
               border="1px solid"
               borderColor="gray.200"
               borderRadius="md"
@@ -266,6 +301,27 @@ export default function Editor({
               minH="300px"
               color="#121C27"
               sx={{
+                '& .ql-toolbar': {
+                  position: isToolbarFloating ? 'fixed' : 'relative',
+                  left: isToolbarFloating ? '10px' : 'auto',
+                  display: 'flex',
+                  flexDirection: isToolbarFloating ? 'column' : 'row',
+                  background: 'white',
+                  border: '1px solid',
+                  borderColor: 'gray.200',
+                  borderRadius: 'md',
+                  padding: '8px',
+                  zIndex: 10,
+                  transition: 'all 0.3s ease-in-out',
+                },
+                '& .ql-toolbar .ql-formats': {
+                  display: 'flex',
+                  flexDirection: isToolbarFloating ? 'column' : 'row',
+                  margin: '0',
+                },
+                '& .ql-toolbar .ql-formats button': {
+                  margin: isToolbarFloating ? '4px 0' : '0 4px',
+                },
                 '& .ql-editor': { minHeight: '300px', color: '#121C27' },
                 '& .ql-placeholder': { color: 'gray.500' },
                 '& h1': { fontSize: '2xl', fontWeight: 'bold', mb: 2 },
